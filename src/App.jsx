@@ -289,7 +289,7 @@ function SignupPage({ onBack, onSuccess, showToast }) {
 
   return (
     <div style={{ minHeight: "100vh", background: C.cream, fontFamily: "'Lato',sans-serif" }}>
-      <div style={{ padding: "56px 24px 24px", flex: 1, display: "flex", flexDirection: "column", maxWidth: 420, margin: "0 auto", width: "100%" }}>
+      <div style={{ padding: "56px 16px 24px", flex: 1, display: "flex", flexDirection: "column", width: "100%", boxSizing: "border-box" }}>
         <div style={{ display: "flex", alignItems: "center", marginBottom: 28 }}>
           <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: C.brown, marginRight: 12 }}>←</button>
           <DiaryLogo size={22} />
@@ -368,8 +368,8 @@ function LoginPage({ onBack, onSuccess, showToast }) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: C.cream, fontFamily: "'Lato',sans-serif" }}>
-      <div style={{ padding: "56px 24px 24px", flex: 1, display: "flex", flexDirection: "column", maxWidth: 420, margin: "0 auto", width: "100%" }}>
+    <div style={{ minHeight: "100vh", background: C.cream, fontFamily: "'Lato',sans-serif", width: "100%", overflowX: "hidden" }}>
+      <div style={{ padding: "56px 16px 24px", flex: 1, display: "flex", flexDirection: "column", width: "100%", boxSizing: "border-box" }}>
         <div style={{ display: "flex", alignItems: "center", marginBottom: 36 }}>
           <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: C.brown, marginRight: 12 }}>←</button>
           <DiaryLogo size={22} />
