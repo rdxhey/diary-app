@@ -227,20 +227,129 @@ function LandingPage({ onSignup, onLogin }) {
 // ============================================================
 // SIGNUP PAGE — REAL SUPABASE AUTH
 // ============================================================
+function ImageCropper({ image, aspect = 1, onCrop, onCancel }) {
+  const canvasRef = useRef(null);
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [imgEl, setImgEl] = useState(null);
+  const CROP_SIZE = 300;
+
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => setImgEl(img);
+    img.src = image;
+  }, [image]);
+
+  useEffect(() => {
+    if (!imgEl || !canvasRef.current) return;
+    const ctx = canvasRef.current.getContext("2d");
+    ctx.clearRect(0, 0, CROP_SIZE, CROP_SIZE);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(CROP_SIZE / 2, CROP_SIZE / 2, CROP_SIZE / 2, 0, Math.PI * 2);
+    ctx.clip();
+    const w = imgEl.width * scale;
+    const h = imgEl.height * scale;
+    const x = (CROP_SIZE - w) / 2 + offset.x;
+    const y = (CROP_SIZE - h) / 2 + offset.y;
+    ctx.drawImage(imgEl, x, y, w, h);
+    ctx.restore();
+    ctx.strokeStyle = "rgba(255,255,255,0.8)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(CROP_SIZE / 2, CROP_SIZE / 2, CROP_SIZE / 2 - 1, 0, Math.PI * 2);
+    ctx.stroke();
+  }, [imgEl, scale, offset]);
+
+  const onMouseDown = (e) => {
+    setDragging(true);
+    setDragStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
+  };
+  const onMouseMove = (e) => {
+    if (!dragging) return;
+    setOffset({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+  };
+  const onMouseUp = () => setDragging(false);
+
+  const onTouchStart = (e) => {
+    const t = e.touches[0];
+    setDragging(true);
+    setDragStart({ x: t.clientX - offset.x, y: t.clientY - offset.y });
+  };
+  const onTouchMove = (e) => {
+    if (!dragging) return;
+    const t = e.touches[0];
+    setOffset({ x: t.clientX - dragStart.x, y: t.clientY - dragStart.y });
+  };
+
+  const handleCrop = () => {
+    canvasRef.current.toBlob((blob) => {
+      onCrop(blob, URL.createObjectURL(blob));
+    }, "image/jpeg", 0.92);
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)",
+      display: "flex", flexDirection: "column", alignItems: "center",
+      justifyContent: "center", zIndex: 9999, gap: 24
+    }}>
+      <p style={{ color: "#fff", fontFamily: "'Lato',sans-serif", fontSize: 17, fontWeight: 600, margin: 0 }}>
+        Drag &amp; zoom to crop your photo
+      </p>
+      <canvas
+        ref={canvasRef} width={CROP_SIZE} height={CROP_SIZE}
+        style={{ borderRadius: "50%", cursor: dragging ? "grabbing" : "grab", boxShadow: "0 0 0 4px rgba(255,255,255,0.2)" }}
+        onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onMouseUp}
+      />
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span style={{ color: "#ccc", fontSize: 13 }}>🔍</span>
+        <input type="range" min="0.5" max="3" step="0.01" value={scale}
+          onChange={(e) => setScale(parseFloat(e.target.value))}
+          style={{ width: 180, accentColor: "#E8735A" }}
+        />
+        <span style={{ color: "#ccc", fontSize: 18 }}>🔍</span>
+      </div>
+      <div style={{ display: "flex", gap: 12 }}>
+        <button onClick={onCancel} style={{
+          padding: "10px 28px", borderRadius: 8, border: "1.5px solid rgba(255,255,255,0.3)",
+          background: "transparent", color: "#fff", fontFamily: "'Lato',sans-serif",
+          fontSize: 15, cursor: "pointer"
+        }}>Cancel</button>
+        <button onClick={handleCrop} style={{
+          padding: "10px 28px", borderRadius: 8, border: "none",
+          background: "#E8735A", color: "#fff", fontFamily: "'Lato',sans-serif",
+          fontSize: 15, fontWeight: 700, cursor: "pointer"
+        }}>Apply Crop ✓</button>
+      </div>
+    </div>
+  );
+}
 function SignupPage({ onBack, onSuccess, showToast }) {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({ name: "", email: "", password: "", username: "", bio: "" });
   const [loading, setLoading] = useState(false);
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);
+  const [cropImage, setCropImage] = useState(null);
+  const [showCropper, setShowCropper] = useState(false);
   const fileRef = useRef();
   const up = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
   const handleAvatarPick = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    setAvatarFile(file);
-    setAvatarPreview(URL.createObjectURL(file));
+    setCropImage(URL.createObjectURL(file));
+    setShowCropper(true);
+  };
+
+  const handleCropped = (blob, url) => {
+    setAvatarFile(new File([blob], "avatar.jpg", { type: "image/jpeg" }));
+    setAvatarPreview(url);
+    setShowCropper(false);
   };
 
   const handleSignup = async () => {
@@ -289,6 +398,7 @@ function SignupPage({ onBack, onSuccess, showToast }) {
 
   return (
     <div style={{ minHeight: "100vh", background: C.cream, fontFamily: "'Lato',sans-serif" }}>
+      {showCropper && <ImageCropper image={cropImage} aspect={1} onCrop={handleCropped} onCancel={() => setShowCropper(false)} />}
       <div style={{ padding: "56px 16px 24px", flex: 1, display: "flex", flexDirection: "column", width: "100%", boxSizing: "border-box" }}>
         <div style={{ display: "flex", alignItems: "center", marginBottom: 28 }}>
           <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: C.brown, marginRight: 12 }}>←</button>
@@ -368,8 +478,8 @@ function LoginPage({ onBack, onSuccess, showToast }) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: C.cream, fontFamily: "'Lato',sans-serif", width: "100%", overflowX: "hidden" }}>
-      <div style={{ padding: "56px 16px 24px", flex: 1, display: "flex", flexDirection: "column", width: "100%", boxSizing: "border-box" }}>
+    <div style={{ minHeight: "100vh", background: C.cream, fontFamily: "'Lato',sans-serif" }}>
+      <div style={{ padding: "56px 16px 24px", display: "flex", flexDirection: "column", width: "100%", maxWidth: "100vw", boxSizing: "border-box" }}>
         <div style={{ display: "flex", alignItems: "center", marginBottom: 36 }}>
           <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: C.brown, marginRight: 12 }}>←</button>
           <DiaryLogo size={22} />
