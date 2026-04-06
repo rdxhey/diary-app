@@ -227,213 +227,68 @@ function LandingPage({ onSignup, onLogin }) {
 // ============================================================
 // SIGNUP PAGE — REAL SUPABASE AUTH
 // ============================================================
-function ImageCropper({ image, onCrop, onCancel, shape = "circle" }) {
+function ImageCropper({ image, aspect = 1, onCrop, onCancel }) {
   const canvasRef = useRef(null);
-  const containerRef = useRef(null);
-  const [imgEl, setImgEl] = useState(null);
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [cropBox, setCropBox] = useState({ x: 40, y: 40, w: 220, h: 220 });
-  const [resizing, setResizing] = useState(null);
-  const CANVAS = 300;
+  const [imgEl, setImgEl] = useState(null);
+  const CROP_SIZE = 300;
 
   useEffect(() => {
     const img = new Image();
-    img.onload = () => {
-      setImgEl(img);
-      if (shape !== "circle") {
-        const aspect = img.width / img.height;
-        const w = aspect >= 1 ? 220 : 140;
-        const h = aspect >= 1 ? w / aspect : w * (img.height / img.width);
-        const cx = (CANVAS - w) / 2;
-        const cy = (CANVAS - h) / 2;
-        setCropBox({ x: cx, y: cy, w, h });
-      }
-    };
+    img.onload = () => setImgEl(img);
     img.src = image;
   }, [image]);
 
   useEffect(() => {
     if (!imgEl || !canvasRef.current) return;
     const ctx = canvasRef.current.getContext("2d");
-    ctx.clearRect(0, 0, CANVAS, CANVAS);
-
-    // Draw image
+    ctx.clearRect(0, 0, CROP_SIZE, CROP_SIZE);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(CROP_SIZE / 2, CROP_SIZE / 2, CROP_SIZE / 2, 0, Math.PI * 2);
+    ctx.clip();
     const w = imgEl.width * scale;
     const h = imgEl.height * scale;
-    const x = (CANVAS - w) / 2 + offset.x;
-    const y = (CANVAS - h) / 2 + offset.y;
+    const x = (CROP_SIZE - w) / 2 + offset.x;
+    const y = (CROP_SIZE - h) / 2 + offset.y;
     ctx.drawImage(imgEl, x, y, w, h);
+    ctx.restore();
+    ctx.strokeStyle = "rgba(255,255,255,0.8)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(CROP_SIZE / 2, CROP_SIZE / 2, CROP_SIZE / 2 - 1, 0, Math.PI * 2);
+    ctx.stroke();
+  }, [imgEl, scale, offset]);
 
-    // Dim outside crop
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(0, 0, CANVAS, CANVAS);
-
-    if (shape === "circle") {
-      // Circular cutout
-      ctx.save();
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.beginPath();
-      ctx.arc(CANVAS / 2, CANVAS / 2, CANVAS / 2 - 8, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(CANVAS / 2, CANVAS / 2, CANVAS / 2 - 8, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.drawImage(imgEl, x, y, w, h);
-      ctx.restore();
-      ctx.strokeStyle = "rgba(255,255,255,0.9)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(CANVAS / 2, CANVAS / 2, CANVAS / 2 - 8, 0, Math.PI * 2);
-      ctx.stroke();
-    } else {
-      // Freeform rect cutout
-      const { x: bx, y: by, w: bw, h: bh } = cropBox;
-      ctx.save();
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.fillRect(bx, by, bw, bh);
-      ctx.restore();
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(bx, by, bw, bh);
-      ctx.clip();
-      ctx.drawImage(imgEl, x, y, w, h);
-      ctx.restore();
-
-      // Border
-      ctx.strokeStyle = "rgba(255,255,255,0.95)";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(bx, by, bw, bh);
-
-      // Grid lines
-      ctx.strokeStyle = "rgba(255,255,255,0.3)";
-      ctx.lineWidth = 0.5;
-      for (let i = 1; i < 3; i++) {
-        ctx.beginPath(); ctx.moveTo(bx + (bw / 3) * i, by); ctx.lineTo(bx + (bw / 3) * i, by + bh); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(bx, by + (bh / 3) * i); ctx.lineTo(bx + bw, by + (bh / 3) * i); ctx.stroke();
-      }
-
-      // Corner handles
-      const hs = 10;
-      ctx.fillStyle = "#fff";
-      [[bx, by], [bx + bw - hs, by], [bx, by + bh - hs], [bx + bw - hs, by + bh - hs]].forEach(([hx, hy]) => {
-        ctx.fillRect(hx, hy, hs, hs);
-      });
-    }
-  }, [imgEl, scale, offset, cropBox, shape]);
-
-  const getPos = (e) => {
-    const rect = canvasRef.current.getBoundingClientRect();
-    const scaleX = CANVAS / rect.width;
-    const scaleY = CANVAS / rect.height;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
-  };
-
-  const getHandle = (pos) => {
-    const { x: bx, y: by, w: bw, h: bh } = cropBox;
-    const hs = 18;
-    if (pos.x < bx + hs && pos.y < by + hs) return "tl";
-    if (pos.x > bx + bw - hs && pos.y < by + hs) return "tr";
-    if (pos.x < bx + hs && pos.y > by + bh - hs) return "bl";
-    if (pos.x > bx + bw - hs && pos.y > by + bh - hs) return "br";
-    if (pos.x >= bx && pos.x <= bx + bw && pos.y >= by && pos.y <= by + bh) return "move";
-    return null;
-  };
-
-  const onDown = (e) => {
-    const pos = getPos(e);
-    if (shape !== "circle") {
-      const handle = getHandle(pos);
-      if (handle) {
-        setResizing(handle);
-        setDragStart(pos);
-        return;
-      }
-    }
+  const onMouseDown = (e) => {
     setDragging(true);
-    setDragStart({ x: pos.x - offset.x, y: pos.y - offset.y });
+    setDragStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
   };
-
-  const onMove = (e) => {
-    const pos = getPos(e);
-    if (resizing) {
-      const dx = pos.x - dragStart.x;
-      const dy = pos.y - dragStart.y;
-      setDragStart(pos);
-      setCropBox(b => {
-        let { x, y, w, h } = b;
-        if (resizing === "tl") { x += dx; y += dy; w -= dx; h -= dy; }
-        if (resizing === "tr") { y += dy; w += dx; h -= dy; }
-        if (resizing === "bl") { x += dx; w -= dx; h += dy; }
-        if (resizing === "br") { w += dx; h += dy; }
-        if (resizing === "move") { x += dx; y += dy; }
-        w = Math.max(60, w); h = Math.max(60, h);
-        x = Math.max(0, Math.min(x, CANVAS - w));
-        y = Math.max(0, Math.min(y, CANVAS - h));
-        return { x, y, w, h };
-      });
-      return;
-    }
+  const onMouseMove = (e) => {
     if (!dragging) return;
-    setOffset({ x: pos.x - dragStart.x, y: pos.y - dragStart.y });
+    setOffset({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
   };
+  const onMouseUp = () => setDragging(false);
 
-  const onUp = () => { setDragging(false); setResizing(null); };
+  const onTouchStart = (e) => {
+    const t = e.touches[0];
+    setDragging(true);
+    setDragStart({ x: t.clientX - offset.x, y: t.clientY - offset.y });
+  };
+  const onTouchMove = (e) => {
+    if (!dragging) return;
+    const t = e.touches[0];
+    setOffset({ x: t.clientX - dragStart.x, y: t.clientY - dragStart.y });
+  };
 
   const handleCrop = () => {
-    const out = document.createElement("canvas");
-    if (shape === "circle") {
-      out.width = CANVAS - 16; out.height = CANVAS - 16;
-      const ctx = out.getContext("2d");
-      const w = imgEl.width * scale;
-      const h = imgEl.height * scale;
-      const x = (CANVAS - w) / 2 + offset.x - 8;
-      const y = (CANVAS - h) / 2 + offset.y - 8;
-      ctx.drawImage(imgEl, x, y, w, h);
-    } else {
-      const { x: bx, y: by, w: bw, h: bh } = cropBox;
-      out.width = bw; out.height = bh;
-      const ctx = out.getContext("2d");
-      const w = imgEl.width * scale;
-      const h = imgEl.height * scale;
-      const ix = (CANVAS - w) / 2 + offset.x;
-      const iy = (CANVAS - h) / 2 + offset.y;
-      ctx.drawImage(imgEl, ix - bx, iy - by, w, h);
-    }
-    out.toBlob(blob => onCrop(blob, URL.createObjectURL(blob)), "image/jpeg", 0.92);
+    canvasRef.current.toBlob((blob) => {
+      onCrop(blob, URL.createObjectURL(blob));
+    }, "image/jpeg", 0.92);
   };
-
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.92)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 9999, gap: 20 }}>
-      <p style={{ color: "#fff", fontFamily: "'Lato',sans-serif", fontSize: 16, fontWeight: 600, margin: 0 }}>
-        {shape === "circle" ? "Drag to position your photo" : "Drag corners to crop freely"}
-      </p>
-      <canvas
-        ref={canvasRef} width={CANVAS} height={CANVAS}
-        style={{ width: 300, height: 300, cursor: resizing === "move" || dragging ? "grabbing" : "crosshair", touchAction: "none" }}
-        onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
-        onTouchStart={onDown} onTouchMove={onMove} onTouchEnd={onUp}
-      />
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <span style={{ color: "#aaa", fontSize: 12 }}>🔍</span>
-        <input type="range" min="0.3" max="4" step="0.01" value={scale}
-          onChange={e => setScale(parseFloat(e.target.value))}
-          style={{ width: 180, accentColor: "#E8869A" }} />
-        <span style={{ color: "#aaa", fontSize: 18 }}>🔍</span>
-      </div>
-      <div style={{ display: "flex", gap: 12 }}>
-        <button onClick={onCancel} style={{ padding: "10px 28px", borderRadius: 8, border: "1.5px solid rgba(255,255,255,0.3)", background: "transparent", color: "#fff", fontFamily: "'Lato',sans-serif", fontSize: 15, cursor: "pointer" }}>Cancel</button>
-        <button onClick={handleCrop} style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: "#E8869A", color: "#fff", fontFamily: "'Lato',sans-serif", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>Apply Crop ✓</button>
-      </div>
-    </div>
-  );
-}
 
   return (
     <div style={{
