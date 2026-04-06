@@ -1260,7 +1260,7 @@ export default function DiaryApp() {
   );
 
   return (
-    <div style={{ maxWidth: 480, margin: "0 auto", background: C.cream, minHeight: "100vh", position: "relative", boxShadow: "0 0 60px rgba(0,0,0,0.1)", overflowX: "hidden" }}>
+    <div style={{ width: "100vw", maxWidth: "480px", margin: "0 auto", background: C.cream, minHeight: "100vh", position: "relative", overflowX: "hidden" }}>
       <FontLoader />
       <style>{`@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}`}</style>
 
