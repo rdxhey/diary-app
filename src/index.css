@@ -4,14 +4,19 @@
   box-sizing: border-box;
 }
 
-html, body {
+html {
+  overflow-x: hidden;
+}
+
+body {
   width: 100%;
+  overflow-x: hidden;
   background: #FAF7F2;
 }
 
 #root {
   width: 100%;
-  display: flex;
-  justify-content: center;
+  max-width: 100vw;
+  overflow-x: hidden;
   background: #FAF7F2;
 }
