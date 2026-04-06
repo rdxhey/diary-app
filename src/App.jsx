@@ -794,13 +794,21 @@ function CreatePage({ currentUser, showToast, setPage }) {
   const [imageFile, setImageFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [cropImage, setCropImage] = useState(null);
+  const [showCropper, setShowCropper] = useState(false);
   const fileRef = useRef();
 
   const pickImage = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    setImageFile(file);
-    setPreview(URL.createObjectURL(file));
+    setCropImage(URL.createObjectURL(file));
+    setShowCropper(true);
+  };
+
+  const handleCropped = (blob, url) => {
+    setImageFile(new File([blob], "post.jpg", { type: "image/jpeg" }));
+    setPreview(url);
+    setShowCropper(false);
   };
 
   const handlePost = async () => {
@@ -837,6 +845,7 @@ function CreatePage({ currentUser, showToast, setPage }) {
 
   return (
     <div style={{ padding: "56px 16px 100px", background: C.cream, minHeight: "100vh" }}>
+      {showCropper && <ImageCropper image={cropImage} aspect={4/3} onCrop={handleCropped} onCancel={() => setShowCropper(false)} />}
       <h1 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 25, color: C.dark, margin: "0 0 4px" }}>New Moment</h1>
       <p style={{ color: C.brown, fontSize: 13, fontFamily: "'Lato',sans-serif", marginBottom: 22 }}>Share a real moment with the world</p>
 
