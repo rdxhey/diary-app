@@ -1059,43 +1059,119 @@ function MemoriesPage({ currentUser, showToast }) {
 // ============================================================
 // PROFILE PAGE — REAL PROFILE FROM SUPABASE
 // ============================================================
-function ProfilePage({ currentUser, profile, setPage, showToast, onLogout }) {
+function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onProfileUpdated }) {
   const [posts, setPosts] = useState([]);
+  const [savedPosts, setSavedPosts] = useState([]);
   const [activeTab, setActiveTab] = useState("posts");
   const [editMode, setEditMode] = useState(false);
-  const [form, setForm] = useState({ full_name: "", bio: "", location: "" });
+  const [profileData, setProfileData] = useState(profile);
+  const [form, setForm] = useState({ full_name: "", username: "", bio: "", location: "" });
   const [saving, setSaving] = useState(false);
+  const [stats, setStats] = useState({ followers: 0, following: 0 });
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState(null);
+  const [avatarCropImage, setAvatarCropImage] = useState(null);
+  const [showAvatarCropper, setShowAvatarCropper] = useState(false);
   const [coverFile, setCoverFile] = useState(null);
   const [coverPreview, setCoverPreview] = useState(null);
+  const avatarRef = useRef();
   const coverRef = useRef();
+  const displayName = profileData?.full_name || currentUser?.email?.split("@")[0] || "Your Name";
+  const username = profileData?.username || currentUser?.email?.split("@")[0] || "user";
+  const avatarSrc = avatarPreview || profileData?.avatar_url || `https://ui-avatars.com/api/?background=D4C5B0&color=4A3728&name=${encodeURIComponent(displayName)}`;
+  const journeys = posts.filter(p => p.location || p.category === "adventure" || p.category === "cultural");
+  const tabPosts = activeTab === "saved" ? savedPosts : activeTab === "journeys" ? journeys : posts;
+  const emptyText = activeTab === "saved" ? "No saved memories yet" : activeTab === "journeys" ? "No journeys yet" : "No moments yet";
 
   useEffect(() => {
-    if (profile) setForm({ full_name: profile.full_name || "", bio: profile.bio || "", location: profile.location || "" });
-  }, [profile]);
+    setProfileData(profile);
+    if (profile) setForm({
+      full_name: profile.full_name || "",
+      username: profile.username || "",
+      bio: profile.bio || "",
+      location: profile.location || "",
+    });
+    else if (currentUser) setForm({
+      full_name: currentUser.email?.split("@")[0] || "",
+      username: currentUser.email?.split("@")[0] || "",
+      bio: "",
+      location: "",
+    });
+  }, [profile, currentUser]);
 
   useEffect(() => {
     if (!currentUser) return;
     (async () => {
-      const { data } = await supabase.from("posts").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false });
-      setPosts(data || []);
+      const [{ data: ownPosts }, { data: saved }] = await Promise.all([
+        supabase.from("posts").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
+        supabase.from("bookmarks").select("*, posts(*)").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
+      ]);
+      setPosts(ownPosts || []);
+      setSavedPosts((saved || []).map(b => b.posts).filter(Boolean));
+
+      const [{ count: followerCount }, { count: followingCount }] = await Promise.all([
+        supabase.from("follows").select("*", { count: "exact", head: true }).eq("following_id", currentUser.id),
+        supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", currentUser.id),
+      ]);
+      setStats({ followers: followerCount || 0, following: followingCount || 0 });
     })();
   }, [currentUser]);
 
+  const handleAvatarPick = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setAvatarCropImage(URL.createObjectURL(file));
+    setShowAvatarCropper(true);
+  };
+
+  const handleAvatarCropped = (blob, url) => {
+    setAvatarFile(new File([blob], "avatar.jpg", { type: "image/jpeg" }));
+    setAvatarPreview(url);
+    setShowAvatarCropper(false);
+  };
+
   const handleSave = async () => {
     setSaving(true);
-    let updates = { ...form };
-    if (coverFile) {
-      const ext = coverFile.name.split(".").pop();
-      const path = `covers/${currentUser.id}.${ext}`;
-      await supabase.storage.from("diary-media").upload(path, coverFile, { upsert: true });
-      const { data: urlData } = supabase.storage.from("diary-media").getPublicUrl(path);
-      updates.cover_url = urlData.publicUrl;
-    }
-    const { error } = await supabase.from("profiles").update(updates).eq("id", currentUser.id);
-    if (error) showToast("Failed to save", "error");
+    try {
+      let updates = {
+        id: currentUser.id,
+        full_name: form.full_name.trim(),
+        username: form.username.trim(),
+        bio: form.bio.trim(),
+        location: form.location.trim(),
+      };
+      if (avatarFile) {
+        const path = `avatars/${currentUser.id}.jpg`;
+        const { error: avatarErr } = await supabase.storage.from("diary-media").upload(path, avatarFile, { upsert: true });
+        if (avatarErr) throw avatarErr;
+        const { data: urlData } = supabase.storage.from("diary-media").getPublicUrl(path);
+        updates.avatar_url = `${urlData.publicUrl}?t=${Date.now()}`;
+      }
+
+      if (coverFile) {
+        const ext = coverFile.name.split(".").pop() || "jpg";
+        const path = `covers/${currentUser.id}.${ext}`;
+        const { error: coverErr } = await supabase.storage.from("diary-media").upload(path, coverFile, { upsert: true });
+        if (coverErr) throw coverErr;
+        const { data: urlData } = supabase.storage.from("diary-media").getPublicUrl(path);
+        updates.cover_url = `${urlData.publicUrl}?t=${Date.now()}`;
+      }
+      const { data, error } = await supabase.from("profiles").upsert(updates).select("*").single();
+      if (error) throw error;
+      setProfileData(data);
+      onProfileUpdated?.(data);
+      setAvatarFile(null);
+      setCoverFile(null);
+      setAvatarPreview(null);
+      setCoverPreview(null);
+      setEditMode(false);
+      if (false) {}
     else showToast("Profile updated! 🌸");
-    setSaving(false);
-    setEditMode(false);
+    } catch (err) {
+      showToast(err.message || "Failed to save", "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!currentUser) return (
@@ -1106,10 +1182,11 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout }) {
 
   return (
     <div style={{ background: C.cream, minHeight: "100vh", paddingBottom: 100 }}>
+      {showAvatarCropper && <ImageCropper image={avatarCropImage} shape="circle" onCrop={handleAvatarCropped} onCancel={() => setShowAvatarCropper(false)} />}
       {/* Cover */}
       <div style={{ height: 155, position: "relative", overflow: "hidden" }}>
         <img
-          src={coverPreview || profile?.cover_url || "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=800&q=80"}
+          src={coverPreview || profileData?.cover_url || "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=800&q=80"}
           style={{ width: "100%", height: "100%", objectFit: "cover" }}
         />
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom,transparent,#FAF7F266)" }} />
@@ -1119,17 +1196,23 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout }) {
           </button>
         )}
         <input ref={coverRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => { const f = e.target.files[0]; if (f) { setCoverFile(f); setCoverPreview(URL.createObjectURL(f)); } }} />
+        <input ref={avatarRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleAvatarPick} />
         <button onClick={() => setPage("settings")} style={{ position: "absolute", top: 12, right: 12, background: "rgba(255,255,255,0.85)", border: "none", borderRadius: 20, padding: "6px 13px", fontFamily: "'Lato',sans-serif", fontSize: 12, cursor: "pointer", color: C.dark }}>⚙ Settings</button>
       </div>
 
       <div style={{ padding: "0 16px" }}>
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginTop: -34, marginBottom: 10 }}>
-          <div style={{ width: 78, height: 78, borderRadius: "50%", border: `3px solid ${C.cream}`, overflow: "hidden", boxShadow: `0 4px 16px ${C.shadow}` }}>
-            <img src={profile?.avatar_url || `https://ui-avatars.com/api/?background=D4C5B0&color=4A3728&name=${profile?.username || "U"}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          <div style={{ width: 78, height: 78, borderRadius: "50%", border: `3px solid ${C.cream}`, overflow: "hidden", boxShadow: `0 4px 16px ${C.shadow}`, position: "relative", background: C.beige }}>
+            <img src={avatarSrc} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            {editMode && (
+              <button onClick={() => avatarRef.current.click()} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.45)", color: C.white, border: "none", fontFamily: "'Lato',sans-serif", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                Change
+              </button>
+            )}
           </div>
           {editMode
             ? <div style={{ display: "flex", gap: 8 }}>
-                <Btn variant="secondary" onClick={() => setEditMode(false)} style={{ fontSize: 12, padding: "8px 14px", borderRadius: 20 }}>Cancel</Btn>
+                <Btn variant="secondary" onClick={() => { setEditMode(false); setAvatarPreview(null); setCoverPreview(null); setAvatarFile(null); setCoverFile(null); }} style={{ fontSize: 12, padding: "8px 14px", borderRadius: 20 }}>Cancel</Btn>
                 <Btn variant="pink" onClick={handleSave} loading={saving} style={{ fontSize: 12, padding: "8px 14px", borderRadius: 20 }}>Save</Btn>
               </div>
             : <Btn variant="secondary" onClick={() => setEditMode(true)} style={{ fontSize: 12, padding: "8px 16px", borderRadius: 20 }}>Edit Profile</Btn>
@@ -1139,21 +1222,23 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout }) {
         {editMode ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
             <Input placeholder="Full name" value={form.full_name} onChange={e => setForm(p => ({ ...p, full_name: e.target.value }))} />
+            <Input placeholder="@username" value={form.username} onChange={e => setForm(p => ({ ...p, username: e.target.value.replace(/\s/g, "").toLowerCase() }))} />
             <Input placeholder="Bio" value={form.bio} onChange={e => setForm(p => ({ ...p, bio: e.target.value }))} multiline />
             <Input placeholder="📍 Currently in..." value={form.location} onChange={e => setForm(p => ({ ...p, location: e.target.value }))} />
           </div>
         ) : (
           <>
-            <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 19, color: C.dark, margin: "0 0 2px" }}>{profile?.full_name || "Your Name"}</h2>
-            <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 4px" }}>@{profile?.username}</p>
-            {profile?.bio && <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 13, color: C.dark, margin: "0 0 4px", lineHeight: 1.5 }}>{profile.bio}</p>}
+            <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 19, color: C.dark, margin: "0 0 2px" }}>{displayName}</h2>
+            <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 4px" }}>@{username}</p>
+            {profileData?.bio && <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 13, color: C.dark, margin: "0 0 4px", lineHeight: 1.5 }}>{profileData.bio}</p>}
             {profile?.location && <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 14px" }}>📍 Currently in: {profile.location}</p>}
+            {!profile?.location && profileData?.location && <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 14px" }}>Currently in: {profileData.location}</p>}
           </>
         )}
 
         {/* Stats */}
         <div style={{ display: "flex", justifyContent: "space-around", background: C.white, borderRadius: 16, padding: "13px", marginBottom: 18, boxShadow: `0 4px 16px ${C.shadow}` }}>
-          {[["Posts", posts.length], ["Followers", "0"], ["Following", "0"]].map(([label, val]) => (
+          {[["Posts", posts.length], ["Followers", stats.followers], ["Following", stats.following], ["Saved", savedPosts.length]].map(([label, val]) => (
             <div key={label} style={{ textAlign: "center" }}>
               <p style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", fontWeight: 700, fontSize: 18, color: C.dark }}>{val}</p>
               <p style={{ margin: 0, fontFamily: "'Lato',sans-serif", fontSize: 10, color: C.brown, marginTop: 1 }}>{label}</p>
@@ -1165,21 +1250,21 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout }) {
         <div style={{ display: "flex", borderBottom: `2px solid ${C.beige}`, marginBottom: 14 }}>
           {["posts", "journeys", "saved"].map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)} style={{ flex: 1, background: "none", border: "none", padding: "10px", cursor: "pointer", fontFamily: "'Lato',sans-serif", fontSize: 11, fontWeight: 700, color: activeTab === tab ? C.pink : C.tan, borderBottom: activeTab === tab ? `2px solid ${C.pink}` : "2px solid transparent", marginBottom: -2, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-              {tab}
+              {tab === "saved" ? "memories" : tab}
             </button>
           ))}
         </div>
 
         {/* Grid */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 3 }}>
-          {posts.map(p => (
+          {tabPosts.map(p => (
             <div key={p.id} style={{ aspectRatio: "1", overflow: "hidden" }}>
               <img src={p.image_url} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             </div>
           ))}
-          {posts.length === 0 && (
+          {tabPosts.length === 0 && (
             <div style={{ gridColumn: "1/-1", textAlign: "center", padding: "30px 0" }}>
-              <p style={{ fontFamily: "'Playfair Display',Georgia,serif", color: C.brown, fontStyle: "italic" }}>No moments yet</p>
+              <p style={{ fontFamily: "'Playfair Display',Georgia,serif", color: C.brown, fontStyle: "italic" }}>{emptyText}</p>
             </div>
           )}
         </div>
@@ -1439,7 +1524,7 @@ export default function DiaryApp() {
           {page === "discover" && <DiscoverPage showToast={showToast} />}
           {page === "create" && <CreatePage currentUser={currentUser} showToast={showToast} setPage={setPage} />}
           {page === "memories" && <MemoriesPage currentUser={currentUser} showToast={showToast} />}
-          {page === "profile" && <ProfilePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onLogout={handleLogout} />}
+          {page === "profile" && <ProfilePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onLogout={handleLogout} onProfileUpdated={setProfile} />}
           {page === "settings" && <SettingsPage onLogout={handleLogout} setPage={setPage} showToast={showToast} />}
           {page === "notifications" && <NotificationsPage currentUser={currentUser} />}
           {page === "dms" && <DMsPage currentUser={currentUser} />}
