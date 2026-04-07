@@ -546,9 +546,11 @@ function LoginPage({ onBack, onSuccess, showToast }) {
 // ============================================================
 // POST CARD — REAL LIKES & BOOKMARKS
 // ============================================================
-function PostCard({ post, currentUser, onLike, onBookmark, showToast }) {
+function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProfile, onDeletePost }) {
   const [burst, setBurst] = useState(null);
   const [showComments, setShowComments] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [comment, setComment] = useState("");
   const [comments, setComments] = useState([]);
   const [loadingComment, setLoadingComment] = useState(false);
@@ -558,6 +560,33 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast }) {
     const rect = e.currentTarget.getBoundingClientRect();
     if (!post.liked) setBurst({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
     onLike(post.id, post.liked);
+  };
+
+  const handleShare = async () => {
+    const url = `${window.location.origin}/?post=${post.id}`;
+    try {
+      if (navigator.share) await navigator.share({ title: "Diary post", text: post.caption || "See this Diary moment", url });
+      else {
+        await navigator.clipboard.writeText(url);
+        showToast("Post link copied!");
+      }
+    } catch {
+      showToast("Share cancelled");
+    }
+  };
+
+  const handleReport = async (reason) => {
+    if (!currentUser) { showToast("Sign in to report posts", "error"); return; }
+    await supabase.from("reports").insert({ post_id: post.id, reporter_id: currentUser.id, reported_user_id: post.user_id, reason });
+    setShowReport(false);
+    setShowMenu(false);
+    showToast("Report sent to Diary");
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    await supabase.from("comments").delete().eq("id", commentId).eq("user_id", currentUser.id);
+    setComments(prev => prev.filter(c => c.id !== commentId));
+    showToast("Comment deleted");
   };
 
   const loadComments = async () => {
@@ -578,6 +607,9 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast }) {
     if (!error) {
       setComment("");
       loadComments();
+      if (post.user_id !== currentUser.id) {
+        await supabase.from("notifications").insert({ user_id: post.user_id, from_user_id: currentUser.id, type: "comment", post_id: post.id });
+      }
       showToast("Comment posted!");
     }
     setLoadingComment(false);
@@ -598,8 +630,10 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast }) {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Avatar src={post.profiles?.avatar_url} size={38} />
-          <div>
+          <div onClick={() => onOpenProfile?.(post.user_id)} style={{ cursor: "pointer" }}>
+            <Avatar src={post.profiles?.avatar_url} size={38} />
+          </div>
+          <div onClick={() => onOpenProfile?.(post.user_id)} style={{ cursor: "pointer" }}>
             <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: C.dark, fontFamily: "'Lato',sans-serif" }}>{post.profiles?.username || "user"}</p>
             {post.location && <p style={{ margin: 0, fontSize: 11, color: C.brown, fontFamily: "'Lato',sans-serif" }}>📍 {post.location}</p>}
           </div>
@@ -608,7 +642,7 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast }) {
       </div>
 
       {/* Image */}
-      <div style={{ width: "100%", aspectRatio: "4/3", overflow: "hidden" }}>
+      <div onDoubleClick={handleLike} style={{ width: "100%", aspectRatio: "4/3", overflow: "hidden", cursor: "pointer" }}>
         <img src={post.image_url} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
       </div>
 
@@ -618,7 +652,7 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast }) {
           <div style={{ display: "flex", gap: 16 }}>
             <button onClick={handleLike} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: post.liked ? C.pink : C.tan, fontSize: 13, fontFamily: "'Lato',sans-serif", fontWeight: 700 }}>
               <span style={{ fontSize: 20, transform: post.liked ? "scale(1.15)" : "scale(1)", transition: "transform 0.18s", display: "block" }}>{post.liked ? "❤️" : "🤍"}</span>
-              {post.likes_count || 0}
+              <span style={{ fontSize: 22, marginLeft: -26, fontFamily: "'Playfair Display',Georgia,serif", background: C.white, position: "relative", zIndex: 1 }}>D</span> {post.likes_count || 0}
             </button>
             <button onClick={toggleComments} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: C.tan, fontSize: 13, fontFamily: "'Lato',sans-serif", fontWeight: 700 }}>
               <span style={{ fontSize: 18 }}>💬</span> {post.comments_count || 0}
@@ -638,14 +672,22 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast }) {
         <p style={{ margin: 0, fontSize: 11, color: C.tan, fontFamily: "'Lato',sans-serif" }}>
           {new Date(post.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
         </p>
+        <div style={{ display: "flex", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+          <button onClick={handleShare} style={{ background: C.beige, border: "none", borderRadius: 999, padding: "6px 10px", cursor: "pointer", color: C.dark, fontSize: 12 }}>Share / copy link</button>
+          {currentUser?.id === post.user_id && <button onClick={() => onDeletePost?.(post.id)} style={{ background: C.beige, border: "none", borderRadius: 999, padding: "6px 10px", cursor: "pointer", color: C.red, fontSize: 12 }}>Delete post</button>}
+          {currentUser?.id !== post.user_id && <button onClick={() => setShowReport(true)} style={{ background: C.beige, border: "none", borderRadius: 999, padding: "6px 10px", cursor: "pointer", color: C.red, fontSize: 12 }}>Report</button>}
+        </div>
 
         {/* Comments */}
         {showComments && (
           <div style={{ marginTop: 12, borderTop: `1px solid ${C.beige}`, paddingTop: 12 }}>
             {comments.map(c => (
-              <div key={c.id} style={{ marginBottom: 8 }}>
+              <div key={c.id} style={{ marginBottom: 8, display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <div>
                 <span style={{ fontWeight: 700, fontSize: 12, color: C.dark, fontFamily: "'Lato',sans-serif" }}>{c.profiles?.username} </span>
                 <span style={{ fontSize: 12, color: C.dark, fontFamily: "'Lato',sans-serif" }}>{c.content}</span>
+                </div>
+                {currentUser?.id === c.user_id && <button onClick={() => handleDeleteComment(c.id)} style={{ border: "none", background: "none", color: C.red, cursor: "pointer", fontSize: 11 }}>Delete</button>}
               </div>
             ))}
             {currentUser && (
@@ -659,6 +701,17 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast }) {
           </div>
         )}
       </div>
+      {showReport && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ background: C.white, borderRadius: 18, padding: 18, maxWidth: 340, width: "100%", boxShadow: `0 10px 35px ${C.shadow}` }}>
+            <h3 style={{ margin: "0 0 10px", color: C.dark, fontFamily: "'Playfair Display',Georgia,serif" }}>Report this post</h3>
+            {["Unappropriate content", "Sexual content", "Not Diary taste", "Unaesthetic"].map(reason => (
+              <button key={reason} onClick={() => handleReport(reason)} style={{ display: "block", width: "100%", textAlign: "left", padding: "11px 0", background: "none", border: "none", borderBottom: `1px solid ${C.beige}`, cursor: "pointer", color: C.dark }}>{reason}</button>
+            ))}
+            <Btn variant="secondary" onClick={() => setShowReport(false)} style={{ width: "100%", marginTop: 12 }}>Cancel</Btn>
+          </div>
+        </div>
+      )}
       {burst && <SakuraBurst x={burst.x} y={burst.y} onDone={() => setBurst(null)} />}
     </div>
   );
@@ -676,7 +729,7 @@ const HEADINGS = {
   cultural: { title: "Cultural Diaries", sub: "Stories woven into history" },
 };
 
-function HomePage({ currentUser, profile, setPage, showToast }) {
+function HomePage({ currentUser, profile, setPage, showToast, onOpenProfile }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState("all");
@@ -721,6 +774,10 @@ function HomePage({ currentUser, profile, setPage, showToast }) {
       await supabase.from("likes").delete().match({ user_id: currentUser.id, post_id: postId });
     } else {
       await supabase.from("likes").insert({ user_id: currentUser.id, post_id: postId });
+      const likedPost = posts.find(post => post.id === postId);
+      if (likedPost?.user_id && likedPost.user_id !== currentUser.id) {
+        await supabase.from("notifications").insert({ user_id: likedPost.user_id, from_user_id: currentUser.id, type: "like", post_id: postId });
+      }
     }
   };
 
@@ -731,6 +788,19 @@ function HomePage({ currentUser, profile, setPage, showToast }) {
       await supabase.from("bookmarks").delete().match({ user_id: currentUser.id, post_id: postId });
     } else {
       await supabase.from("bookmarks").insert({ user_id: currentUser.id, post_id: postId });
+    }
+  };
+
+  const handleDeletePost = async (postId) => {
+    if (!currentUser || !confirm("Delete this post permanently?")) return;
+    await supabase.from("comments").delete().eq("post_id", postId);
+    await supabase.from("likes").delete().eq("post_id", postId);
+    await supabase.from("bookmarks").delete().eq("post_id", postId);
+    const { error } = await supabase.from("posts").delete().eq("id", postId).eq("user_id", currentUser.id);
+    if (error) showToast("Could not delete post", "error");
+    else {
+      setPosts(prev => prev.filter(post => post.id !== postId));
+      showToast("Post deleted");
     }
   };
 
@@ -809,7 +879,7 @@ function HomePage({ currentUser, profile, setPage, showToast }) {
           </div>
         ) : (
           posts.map(post => (
-            <PostCard key={post.id} post={post} currentUser={currentUser} onLike={handleLike} onBookmark={handleBookmark} showToast={showToast} />
+            <PostCard key={post.id} post={post} currentUser={currentUser} onLike={handleLike} onBookmark={handleBookmark} showToast={showToast} onOpenProfile={onOpenProfile} onDeletePost={handleDeletePost} />
           ))
         )}
 
@@ -931,9 +1001,11 @@ function CreatePage({ currentUser, showToast, setPage }) {
 // ============================================================
 // DISCOVER PAGE
 // ============================================================
-function DiscoverPage({ showToast }) {
+function DiscoverPage({ showToast, onOpenProfile }) {
   const [search, setSearch] = useState("");
   const [results, setResults] = useState([]);
+  const [posts, setPosts] = useState([]);
+  const [title, setTitle] = useState("Explore Diary");
   const [searching, setSearching] = useState(false);
   const trending = ["Kyoto", "Takayama", "Hakone", "Nara", "Shirakawa-go", "Nikko"];
   const vibes = ["🌸 Peaceful", "🏔️ Adventure", "🍜 Food", "🌿 Nature", "🏯 Cultural", "🌊 Coastal"];
@@ -941,9 +1013,27 @@ function DiscoverPage({ showToast }) {
   const handleSearch = async () => {
     if (!search.trim()) return;
     setSearching(true);
-    const { data } = await supabase.from("profiles").select("*").ilike("username", `%${search}%`).limit(10);
-    setResults(data || []);
+    const term = search.trim();
+    const [{ data: users }, { data: matchedPosts }] = await Promise.all([
+      supabase.from("profiles").select("*").or(`username.ilike.%${term}%,full_name.ilike.%${term}%,location.ilike.%${term}%`).limit(10),
+      supabase.from("posts").select("*, profiles(username, avatar_url)").or(`location.ilike.%${term}%,caption.ilike.%${term}%,category.ilike.%${term}%`).limit(30),
+    ]);
+    setResults(users || []);
+    setPosts(matchedPosts || []);
+    setTitle(`Results for "${term}"`);
     setSearching(false);
+  };
+
+  const loadByLocation = async (location) => {
+    setTitle(`Trending in ${location}`);
+    const { data } = await supabase.from("posts").select("*, profiles(username, avatar_url)").ilike("location", `%${location}%`).limit(30);
+    setPosts(data || []);
+  };
+
+  const loadByVibe = async (label, vibe) => {
+    setTitle(`${label} posts`);
+    const { data } = await supabase.from("posts").select("*, profiles(username, avatar_url)").eq("category", vibe).limit(30);
+    setPosts(data || []);
   };
 
   return (
@@ -957,7 +1047,7 @@ function DiscoverPage({ showToast }) {
       {results.length > 0 && (
         <div style={{ marginBottom: 24 }}>
           {results.map(u => (
-            <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 12, background: C.white, borderRadius: 14, padding: "12px", marginBottom: 10, boxShadow: `0 2px 10px ${C.shadow}` }}>
+            <div key={u.id} onClick={() => onOpenProfile?.(u.id)} style={{ display: "flex", alignItems: "center", gap: 12, background: C.white, borderRadius: 14, padding: "12px", marginBottom: 10, boxShadow: `0 2px 10px ${C.shadow}`, cursor: "pointer" }}>
               <Avatar src={u.avatar_url} size={44} />
               <div>
                 <p style={{ margin: 0, fontFamily: "'Lato',sans-serif", fontWeight: 700, fontSize: 14, color: C.dark }}>@{u.username}</p>
@@ -971,7 +1061,7 @@ function DiscoverPage({ showToast }) {
       {/* Moment of the Day */}
       <div style={{ marginBottom: 22 }}>
         <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>✦ Moment of the Day</h3>
-        <div style={{ borderRadius: 20, overflow: "hidden", position: "relative", height: 190 }}>
+        <div onClick={() => loadByLocation("Nikko")} style={{ borderRadius: 20, overflow: "hidden", position: "relative", height: 190, cursor: "pointer" }}>
           <img src="https://images.unsplash.com/photo-1545569341-9eb8b30979d9?w=600&q=80" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top,#4A372888,transparent)" }} />
           <div style={{ position: "absolute", bottom: 16, left: 16 }}>
@@ -994,12 +1084,35 @@ function DiscoverPage({ showToast }) {
       {/* Vibes */}
       <div style={{ marginBottom: 22 }}>
         <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>Browse by Vibe</h3>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+          {trending.map(t => (
+            <button key={t} onClick={() => loadByLocation(t)} style={{ background: C.white, border: `1px solid ${C.tan}`, borderRadius: 20, padding: "7px 13px", fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.dark, cursor: "pointer" }}>{t}</button>
+          ))}
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {[
+            ["Peaceful", "rural"],
+            ["Adventure", "adventure"],
+            ["Food", "food"],
+            ["Nature", "nature"],
+            ["Cultural", "cultural"],
+            ["Coastal", "coastal"],
+          ].map(([label, vibe]) => (
+            <button key={vibe} onClick={() => loadByVibe(label, vibe)} style={{ background: C.white, borderRadius: 14, padding: "15px", border: `1px solid ${C.beige}`, cursor: "pointer", boxShadow: `0 2px 10px ${C.shadow}`, fontFamily: "'Lato',sans-serif", fontSize: 14, color: C.dark, fontWeight: 700, textAlign: "center" }}>{label}</button>
+          ))}
           {vibes.map(v => (
             <div key={v} style={{ background: C.white, borderRadius: 14, padding: "15px", border: `1px solid ${C.beige}`, cursor: "pointer", boxShadow: `0 2px 10px ${C.shadow}`, fontFamily: "'Lato',sans-serif", fontSize: 14, color: C.dark, fontWeight: 700, textAlign: "center" }}>{v}</div>
           ))}
         </div>
       </div>
+      {posts.length > 0 && (
+        <div style={{ marginBottom: 22 }}>
+          <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>{title}</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
+            {posts.map(p => <img key={p.id} src={p.image_url} alt="" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8 }} />)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1141,7 +1254,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
         location: form.location.trim(),
       };
       if (avatarFile) {
-        const path = `avatars/${currentUser.id}.jpg`;
+        const path = `covers/${currentUser.id}-avatar.jpg`;
         const { error: avatarErr } = await supabase.storage.from("diary-media").upload(path, avatarFile, { upsert: true });
         if (avatarErr) throw avatarErr;
         const { data: urlData } = supabase.storage.from("diary-media").getPublicUrl(path);
@@ -1257,8 +1370,13 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
         {/* Grid */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 3 }}>
           {tabPosts.map(p => (
-            <div key={p.id} style={{ aspectRatio: "1", overflow: "hidden" }}>
+            <div key={p.id} style={{ aspectRatio: "1", overflow: "hidden", position: "relative", borderRadius: 6 }}>
               <img src={p.image_url} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top,rgba(0,0,0,.45),transparent)", opacity: 0.95, display: "flex", alignItems: "flex-end", justifyContent: "space-around", padding: 6 }}>
+                <button onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/?post=${p.id}`).then(() => showToast("Post link copied!"))} style={{ border: "none", borderRadius: "50%", width: 28, height: 28, background: "rgba(255,255,255,.9)", cursor: "pointer" }}>↗</button>
+                <button onClick={() => setActiveTab("saved")} style={{ border: "none", borderRadius: "50%", width: 28, height: 28, background: "rgba(255,255,255,.9)", cursor: "pointer" }}>↧</button>
+                <button onClick={() => showToast("Open the post from Home to comment")} style={{ border: "none", borderRadius: "50%", width: 28, height: 28, background: "rgba(255,255,255,.9)", cursor: "pointer" }}>D</button>
+              </div>
             </div>
           ))}
           {tabPosts.length === 0 && (
@@ -1273,9 +1391,114 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
 }
 
 // ============================================================
+// PUBLIC PROFILE PAGE
+// ============================================================
+function PublicProfilePage({ profileId, currentUser, setPage, showToast }) {
+  const [profile, setProfile] = useState(null);
+  const [posts, setPosts] = useState([]);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+
+  useEffect(() => {
+    if (!profileId) return;
+    (async () => {
+      const [{ data: profileData }, { data: postData }, { data: followData }] = await Promise.all([
+        supabase.from("profiles").select("*").eq("id", profileId).single(),
+        supabase.from("posts").select("*").eq("user_id", profileId).order("created_at", { ascending: false }),
+        currentUser ? supabase.from("follows").select("*").eq("follower_id", currentUser.id).eq("following_id", profileId).maybeSingle() : Promise.resolve({ data: null }),
+      ]);
+      setProfile(profileData);
+      setPosts(postData || []);
+      setIsFollowing(Boolean(followData));
+    })();
+  }, [profileId, currentUser]);
+
+  const handleFollow = async () => {
+    if (!currentUser) { showToast("Sign in to follow users", "error"); return; }
+    if (isFollowing) {
+      await supabase.from("follows").delete().match({ follower_id: currentUser.id, following_id: profileId });
+      setIsFollowing(false);
+    } else {
+      await supabase.from("follows").insert({ follower_id: currentUser.id, following_id: profileId });
+      await supabase.from("notifications").insert({ user_id: profileId, from_user_id: currentUser.id, type: "follow" });
+      setIsFollowing(true);
+    }
+  };
+
+  const handleBlock = async () => {
+    if (!currentUser || !confirm("Block this user?")) return;
+    await supabase.from("blocks").insert({ blocker_id: currentUser.id, blocked_id: profileId });
+    showToast("User blocked");
+    setPage("home");
+  };
+
+  const handleReport = async (reason) => {
+    if (!currentUser) return;
+    await supabase.from("reports").insert({ reporter_id: currentUser.id, reported_user_id: profileId, reason });
+    setReportOpen(false);
+    showToast("Report sent to Diary");
+  };
+
+  if (!profile) return <div style={{ padding: "80px 16px", background: C.cream, minHeight: "100vh", color: C.brown }}>Loading profile...</div>;
+  return (
+    <div style={{ background: C.cream, minHeight: "100vh", paddingBottom: 100 }}>
+      <button onClick={() => setPage("home")} style={{ position: "fixed", top: 14, left: 14, zIndex: 10, border: "none", borderRadius: 20, background: "rgba(255,255,255,.9)", padding: "8px 12px", cursor: "pointer" }}>Back</button>
+      <div style={{ height: 155, overflow: "hidden" }}>
+        <img src={profile.cover_url || "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=800&q=80"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      </div>
+      <div style={{ padding: "0 16px" }}>
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginTop: -34, marginBottom: 14 }}>
+          <Avatar src={profile.avatar_url} size={78} />
+          <div style={{ display: "flex", gap: 8 }}>
+            {currentUser?.id !== profileId && <Btn variant={isFollowing ? "secondary" : "pink"} onClick={handleFollow} style={{ borderRadius: 20, padding: "9px 14px" }}>{isFollowing ? "Unfollow" : "Follow"}</Btn>}
+            {currentUser?.id !== profileId && <Btn variant="secondary" onClick={() => setReportOpen(true)} style={{ borderRadius: 20, padding: "9px 12px" }}>Report</Btn>}
+          </div>
+        </div>
+        <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, margin: "0 0 2px" }}>{profile.full_name || profile.username || "Diary user"}</h2>
+        <p style={{ margin: "0 0 8px", color: C.brown, fontFamily: "'Lato',sans-serif" }}>@{profile.username || "user"}</p>
+        {profile.bio && <p style={{ color: C.dark, fontSize: 13 }}>{profile.bio}</p>}
+        {profile.location && <p style={{ color: C.brown, fontSize: 12 }}>Currently in: {profile.location}</p>}
+        {currentUser?.id !== profileId && <button onClick={handleBlock} style={{ border: "none", background: "none", color: C.red, cursor: "pointer", padding: 0, marginBottom: 16 }}>Block user</button>}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 3, marginTop: 12 }}>
+          {posts.map(p => <img key={p.id} src={p.image_url} style={{ width: "100%", aspectRatio: "1", objectFit: "cover" }} />)}
+        </div>
+      </div>
+      {reportOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ background: C.white, borderRadius: 18, padding: 18, maxWidth: 340, width: "100%" }}>
+            <h3 style={{ marginTop: 0 }}>Report @{profile.username}</h3>
+            {["Unappropriate content", "Sexual content", "Not Diary taste", "Unaesthetic"].map(reason => <button key={reason} onClick={() => handleReport(reason)} style={{ display: "block", width: "100%", textAlign: "left", padding: 11, border: "none", borderBottom: `1px solid ${C.beige}`, background: "none" }}>{reason}</button>)}
+            <Btn variant="secondary" onClick={() => setReportOpen(false)} style={{ width: "100%", marginTop: 12 }}>Cancel</Btn>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
 // SETTINGS PAGE
 // ============================================================
-function SettingsPage({ onLogout, setPage, showToast }) {
+function SettingsPage({ onLogout, setPage, showToast, currentUser }) {
+  const [privateAccount, setPrivateAccount] = useState(false);
+  const [notifications, setNotifications] = useState(true);
+  const handleDeleteAccount = async () => {
+    if (!currentUser || !confirm("Delete your Diary account data? This removes your posts, comments, bookmarks and profile.")) return;
+    await supabase.from("comments").delete().eq("user_id", currentUser.id);
+    await supabase.from("likes").delete().eq("user_id", currentUser.id);
+    await supabase.from("bookmarks").delete().eq("user_id", currentUser.id);
+    await supabase.from("posts").delete().eq("user_id", currentUser.id);
+    await supabase.from("profiles").delete().eq("id", currentUser.id);
+    showToast("Account data deleted");
+    onLogout();
+  };
+  const handleSetting = (label) => {
+    if (label === "Edit Profile") setPage("profile");
+    else if (label === "Delete Account") handleDeleteAccount();
+    else if (label === "Account Privacy") { setPrivateAccount(v => !v); showToast(`Account privacy set to ${privateAccount ? "public" : "private"}`); }
+    else if (label === "Notifications") { setNotifications(v => !v); showToast(`Notifications ${notifications ? "off" : "on"}`); }
+    else showToast(`${label} coming soon`);
+  };
   const sections = [
     { title: "Account", items: [{ icon: "✏️", label: "Edit Profile" }, { icon: "🔒", label: "Change Password" }, { icon: "🔔", label: "Notifications" }] },
     { title: "Privacy", items: [{ icon: "👁️", label: "Account Privacy" }, { icon: "🚫", label: "Blocked Users" }] },
@@ -1293,7 +1516,7 @@ function SettingsPage({ onLogout, setPage, showToast }) {
           <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 10, fontWeight: 700, color: C.tan, letterSpacing: "1px", textTransform: "uppercase", margin: "0 0 7px" }}>{s.title}</p>
           <div style={{ background: C.white, borderRadius: 16, overflow: "hidden", boxShadow: `0 4px 16px ${C.shadow}` }}>
             {s.items.map((item, i) => (
-              <div key={item.label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 16px", borderBottom: i < s.items.length - 1 ? `1px solid ${C.beige}` : "none", cursor: "pointer" }}>
+              <div key={item.label} onClick={() => handleSetting(item.label)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 16px", borderBottom: i < s.items.length - 1 ? `1px solid ${C.beige}` : "none", cursor: "pointer" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <span style={{ fontSize: 17 }}>{item.icon}</span>
                   <span style={{ fontFamily: "'Lato',sans-serif", fontSize: 14, color: item.danger ? C.red : C.dark, fontWeight: item.danger ? 700 : 400 }}>{item.label}</span>
@@ -1450,6 +1673,7 @@ export default function DiaryApp() {
   const [page, setPage] = useState("home");
   const [currentUser, setCurrentUser] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [viewProfileId, setViewProfileId] = useState(null);
   const [toast, setToast] = useState({ msg: "", type: "success" });
 
   const showToast = (msg, type = "success") => {
@@ -1496,6 +1720,11 @@ export default function DiaryApp() {
 
   const navPages = ["home", "discover", "create", "memories", "profile"];
   const showNav = navPages.includes(page);
+  const openProfile = (id) => {
+    if (!id) return;
+    if (id === currentUser?.id) setPage("profile");
+    else { setViewProfileId(id); setPage("publicProfile"); }
+  };
 
   if (screen === "loading") return (
     <div style={{ minHeight: "100vh", background: C.cream, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
@@ -1519,12 +1748,13 @@ export default function DiaryApp() {
 
       {screen === "app" && (
         <>
-          {page === "home" && <HomePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} />}
-          {page === "discover" && <DiscoverPage showToast={showToast} />}
+          {page === "home" && <HomePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onOpenProfile={openProfile} />}
+          {page === "discover" && <DiscoverPage showToast={showToast} onOpenProfile={openProfile} />}
           {page === "create" && <CreatePage currentUser={currentUser} showToast={showToast} setPage={setPage} />}
           {page === "memories" && <MemoriesPage currentUser={currentUser} showToast={showToast} />}
           {page === "profile" && <ProfilePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onLogout={handleLogout} onProfileUpdated={setProfile} />}
-          {page === "settings" && <SettingsPage onLogout={handleLogout} setPage={setPage} showToast={showToast} />}
+          {page === "publicProfile" && <PublicProfilePage profileId={viewProfileId} currentUser={currentUser} setPage={setPage} showToast={showToast} />}
+          {page === "settings" && <SettingsPage onLogout={handleLogout} setPage={setPage} showToast={showToast} currentUser={currentUser} />}
           {page === "notifications" && <NotificationsPage currentUser={currentUser} />}
           {page === "dms" && <DMsPage currentUser={currentUser} />}
           {showNav && <BottomNav page={page} setPage={setPage} />}
