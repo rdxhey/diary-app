@@ -1475,23 +1475,28 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
 // ============================================================
 // PUBLIC PROFILE PAGE
 // ============================================================
-function PublicProfilePage({ profileId, currentUser, setPage, showToast }) {
+function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessageUser }) {
   const [profile, setProfile] = useState(null);
   const [posts, setPosts] = useState([]);
   const [isFollowing, setIsFollowing] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("posts");
+  const [stats, setStats] = useState({ followers: 0, following: 0 });
 
   useEffect(() => {
     if (!profileId) return;
     (async () => {
-      const [{ data: profileData }, { data: postData }, { data: followData }] = await Promise.all([
+      const [{ data: profileData }, { data: postData }, { data: followData }, { count: followerCount }, { count: followingCount }] = await Promise.all([
         supabase.from("profiles").select("*").eq("id", profileId).single(),
         supabase.from("posts").select("*").eq("user_id", profileId).order("created_at", { ascending: false }),
         currentUser ? supabase.from("follows").select("*").eq("follower_id", currentUser.id).eq("following_id", profileId).maybeSingle() : Promise.resolve({ data: null }),
+        supabase.from("follows").select("*", { count: "exact", head: true }).eq("following_id", profileId),
+        supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", profileId),
       ]);
       setProfile(profileData);
       setPosts(postData || []);
       setIsFollowing(Boolean(followData));
+      setStats({ followers: followerCount || 0, following: followingCount || 0 });
     })();
   }, [profileId, currentUser]);
 
@@ -1505,6 +1510,12 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast }) {
       await supabase.from("notifications").insert({ user_id: profileId, from_user_id: currentUser.id, type: "follow" });
       setIsFollowing(true);
     }
+  };
+
+  const handleMessage = async () => {
+    if (!currentUser) { showToast("Sign in to message users", "error"); return; }
+    onMessageUser?.({ id: profileId, username: profile.username, full_name: profile.full_name, avatar_url: profile.avatar_url });
+    setPage("dms");
   };
 
   const handleBlock = async () => {
@@ -1522,28 +1533,72 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast }) {
   };
 
   if (!profile) return <div style={{ padding: "80px 16px", background: C.cream, minHeight: "100vh", color: C.brown }}>Loading profile...</div>;
+
+  const isPrivate = Boolean(profile.is_private || profile.private_account);
+  const canViewDiary = !isPrivate || isFollowing || currentUser?.id === profileId;
+  const journeys = posts.filter(p => p.location || p.category === "adventure" || p.category === "cultural");
+  const visiblePosts = activeTab === "journeys" ? journeys : posts;
+  const emptyCopy = activeTab === "journeys" ? "No journeys shared yet" : "No public moments yet";
+
   return (
     <div style={{ background: C.cream, minHeight: "100vh", paddingBottom: 100 }}>
-      <button onClick={() => setPage("home")} style={{ position: "fixed", top: 14, left: 14, zIndex: 10, border: "none", borderRadius: 20, background: "rgba(255,255,255,.9)", padding: "8px 12px", cursor: "pointer" }}>Back</button>
-      <div style={{ height: 155, overflow: "hidden" }}>
-        <img src={profile.cover_url || "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=800&q=80"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      <PageHeader title="Diary account" subtitle={`@${profile.username || "user"}`} onBack={() => setPage("home")} />
+      <div style={{ height: 210, overflow: "hidden", position: "relative", borderRadius: "0 0 34px 34px", boxShadow: `0 12px 30px ${C.shadow}` }}>
+        <img src={profile.cover_url || "https://images.unsplash.com/photo-1528164344705-47542687000d?w=900&q=80"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom,rgba(74,55,40,.05),rgba(250,247,242,.7))" }} />
+        <div style={{ position: "absolute", bottom: 18, left: 18, right: 18 }}>
+          <p style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", fontSize: 28, color: C.white, textShadow: "0 2px 12px rgba(0,0,0,.35)" }}>{profile.full_name || profile.username || "Diary user"}</p>
+          <p style={{ margin: "2px 0 0", fontSize: 12, color: C.cream, textShadow: "0 2px 12px rgba(0,0,0,.45)" }}>{profile.location ? `Currently in ${profile.location}` : "Rural memories"}</p>
+        </div>
       </div>
       <div style={{ padding: "0 16px" }}>
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginTop: -34, marginBottom: 14 }}>
-          <Avatar src={profile.avatar_url} size={78} />
-          <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginTop: -42, marginBottom: 14 }}>
+          <div style={{ padding: 3, borderRadius: "50%", background: C.cream, boxShadow: `0 8px 24px ${C.shadow}` }}>
+            <Avatar src={profile.avatar_url} size={86} active />
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
             {currentUser?.id !== profileId && <Btn variant={isFollowing ? "secondary" : "pink"} onClick={handleFollow} style={{ borderRadius: 20, padding: "9px 14px" }}>{isFollowing ? "Unfollow" : "Follow"}</Btn>}
+            {currentUser?.id !== profileId && <Btn variant="secondary" onClick={handleMessage} style={{ borderRadius: 20, padding: "9px 14px" }}>Message</Btn>}
             {currentUser?.id !== profileId && <Btn variant="secondary" onClick={() => setReportOpen(true)} style={{ borderRadius: 20, padding: "9px 12px" }}>Report</Btn>}
           </div>
         </div>
-        <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, margin: "0 0 2px" }}>{profile.full_name || profile.username || "Diary user"}</h2>
+        <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, margin: "0 0 2px", fontSize: 26 }}>{profile.full_name || profile.username || "Diary user"}</h2>
         <p style={{ margin: "0 0 8px", color: C.brown, fontFamily: "'Lato',sans-serif" }}>@{profile.username || "user"}</p>
-        {profile.bio && <p style={{ color: C.dark, fontSize: 13 }}>{profile.bio}</p>}
-        {profile.location && <p style={{ color: C.brown, fontSize: 12 }}>Currently in: {profile.location}</p>}
+        {profile.bio && <p style={{ color: C.dark, fontSize: 13, lineHeight: 1.55, marginBottom: 8 }}>{profile.bio}</p>}
+        {profile.location && <p style={{ color: C.brown, fontSize: 12, marginBottom: 8 }}>Currently in: {profile.location}</p>}
         {currentUser?.id !== profileId && <button onClick={handleBlock} style={{ border: "none", background: "none", color: C.red, cursor: "pointer", padding: 0, marginBottom: 16 }}>Block user</button>}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 3, marginTop: 12 }}>
-          {posts.map(p => <img key={p.id} src={p.image_url} style={{ width: "100%", aspectRatio: "1", objectFit: "cover" }} />)}
+        <div style={{ display: "flex", justifyContent: "space-around", background: C.white, borderRadius: 18, padding: "14px 10px", margin: "8px 0 18px", boxShadow: `0 8px 24px ${C.shadow}` }}>
+          {[["Posts", posts.length], ["Journeys", journeys.length], ["Followers", stats.followers], ["Following", stats.following]].map(([label, value]) => (
+            <div key={label} style={{ textAlign: "center" }}>
+              <p style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, fontWeight: 700, fontSize: 18 }}>{value}</p>
+              <p style={{ margin: "2px 0 0", color: C.brown, fontSize: 10, textTransform: "uppercase", letterSpacing: ".6px" }}>{label}</p>
+            </div>
+          ))}
         </div>
+        {!canViewDiary ? (
+          <div style={{ background: C.white, borderRadius: 24, padding: "38px 22px", textAlign: "center", boxShadow: `0 10px 30px ${C.shadow}` }}>
+            <div style={{ fontSize: 34, marginBottom: 8 }}>Lock</div>
+            <h3 style={{ margin: "0 0 6px", fontFamily: "'Playfair Display',Georgia,serif", color: C.dark }}>This Diary is private</h3>
+            <p style={{ margin: "0 0 18px", color: C.brown, fontSize: 13, lineHeight: 1.5 }}>Follow to see their Diary activities, posts, journeys, and memories.</p>
+            <Btn variant="pink" onClick={handleFollow} style={{ borderRadius: 999 }}>Follow to request access</Btn>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+              {["posts", "journeys"].map(tab => (
+                <button key={tab} onClick={() => setActiveTab(tab)} style={{ background: activeTab === tab ? C.dark : C.white, color: activeTab === tab ? C.cream : C.brown, border: `1px solid ${C.beige}`, borderRadius: 14, padding: "11px 10px", cursor: "pointer", fontWeight: 800, textTransform: "capitalize", boxShadow: `0 4px 14px ${C.shadow}` }}>{tab}</button>
+              ))}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginTop: 12 }}>
+              {visiblePosts.map(p => <img key={p.id} src={p.image_url} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8 }} />)}
+            </div>
+            {visiblePosts.length === 0 && (
+              <div style={{ background: C.white, borderRadius: 22, padding: "34px 18px", textAlign: "center", boxShadow: `0 8px 24px ${C.shadow}` }}>
+                <p style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.brown, fontStyle: "italic" }}>{emptyCopy}</p>
+              </div>
+            )}
+          </>
+        )}
       </div>
       {reportOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
@@ -1561,9 +1616,31 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast }) {
 // ============================================================
 // SETTINGS PAGE
 // ============================================================
-function SettingsPage({ onLogout, setPage, showToast, currentUser }) {
+function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onProfileUpdated }) {
   const [privateAccount, setPrivateAccount] = useState(false);
   const [notifications, setNotifications] = useState(true);
+  useEffect(() => {
+    setPrivateAccount(Boolean(profile?.is_private || profile?.private_account));
+  }, [profile]);
+
+  const togglePrivacy = async () => {
+    if (!currentUser) return;
+    const next = !privateAccount;
+    setPrivateAccount(next);
+    const { data, error } = await supabase.from("profiles")
+      .update({ is_private: next })
+      .eq("id", currentUser.id)
+      .select("*")
+      .single();
+    if (error) {
+      setPrivateAccount(!next);
+      showToast("Private account needs Supabase is_private column", "error");
+      return;
+    }
+    onProfileUpdated?.(data);
+    showToast(`Account privacy set to ${next ? "private" : "public"}`);
+  };
+
   const handleDeleteAccount = async () => {
     if (!currentUser || !confirm("Delete your Diary account data? This removes your posts, comments, bookmarks and profile.")) return;
     await supabase.from("comments").delete().eq("user_id", currentUser.id);
@@ -1577,7 +1654,7 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser }) {
   const handleSetting = (label) => {
     if (label === "Edit Profile") setPage("profile");
     else if (label === "Delete Account") handleDeleteAccount();
-    else if (label === "Account Privacy") { setPrivateAccount(v => !v); showToast(`Account privacy set to ${privateAccount ? "public" : "private"}`); }
+    else if (label === "Account Privacy") togglePrivacy();
     else if (label === "Notifications") { setNotifications(v => !v); showToast(`Notifications ${notifications ? "off" : "on"}`); }
     else showToast(`${label} coming soon`);
   };
@@ -1603,13 +1680,17 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser }) {
                   <span style={{ fontSize: 17 }}>{item.icon}</span>
                   <span style={{ fontFamily: "'Lato',sans-serif", fontSize: 14, color: item.danger ? C.red : C.dark, fontWeight: item.danger ? 700 : 400 }}>{item.label}</span>
                 </div>
-                <span style={{ color: C.tan }}>›</span>
+                <span style={{ color: C.tan }}>{item.label === "Account Privacy" ? (privateAccount ? "Private" : "Public") : "›"}</span>
               </div>
             ))}
           </div>
         </div>
       ))}
       <Btn variant="secondary" onClick={onLogout} style={{ width: "100%", borderRadius: 16, padding: "13px", fontSize: 14 }}>Sign Out</Btn>
+      <div style={{ textAlign: "center", marginTop: 30, color: C.tan, fontFamily: "'Lato',sans-serif", fontSize: 11, lineHeight: 1.8 }}>
+        <p style={{ margin: 0 }}>© 2026 Diary Inc. All rights reserved.</p>
+        <p style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.brown }}>Be real you - by Diary</p>
+      </div>
     </div>
   );
 }
@@ -1747,7 +1828,7 @@ function DMsPage({ currentUser }) {
   );
 }
 
-function DMsPage2({ currentUser, setPage, showToast }) {
+function DMsPage2({ currentUser, setPage, showToast, initialUser }) {
   const [conversations, setConversations] = useState([]);
   const [active, setActive] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -1810,6 +1891,10 @@ function DMsPage2({ currentUser, setPage, showToast }) {
       .order("created_at", { ascending: true });
     setMessages(data || []);
   };
+
+  useEffect(() => {
+    if (initialUser && active?.id !== initialUser.id) openConvo(initialUser);
+  }, [initialUser]);
 
   const sendMsg = async () => {
     if (!newMsg.trim() || !active) return;
@@ -1909,6 +1994,7 @@ export default function DiaryApp() {
   const [currentUser, setCurrentUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [viewProfileId, setViewProfileId] = useState(null);
+  const [dmInitialUser, setDmInitialUser] = useState(null);
   const [toast, setToast] = useState({ msg: "", type: "success" });
 
   const showToast = (msg, type = "success") => {
@@ -1988,10 +2074,10 @@ export default function DiaryApp() {
           {page === "create" && <CreatePage currentUser={currentUser} showToast={showToast} setPage={setPage} />}
           {page === "memories" && <MemoriesPage currentUser={currentUser} showToast={showToast} />}
           {page === "profile" && <ProfilePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onLogout={handleLogout} onProfileUpdated={setProfile} />}
-          {page === "publicProfile" && <PublicProfilePage profileId={viewProfileId} currentUser={currentUser} setPage={setPage} showToast={showToast} />}
-          {page === "settings" && <SettingsPage onLogout={handleLogout} setPage={setPage} showToast={showToast} currentUser={currentUser} />}
+          {page === "publicProfile" && <PublicProfilePage profileId={viewProfileId} currentUser={currentUser} setPage={setPage} showToast={showToast} onMessageUser={setDmInitialUser} />}
+          {page === "settings" && <SettingsPage onLogout={handleLogout} setPage={setPage} showToast={showToast} currentUser={currentUser} profile={profile} onProfileUpdated={setProfile} />}
           {page === "notifications" && <NotificationsPage currentUser={currentUser} setPage={setPage} />}
-          {page === "dms" && <DMsPage2 currentUser={currentUser} setPage={setPage} showToast={showToast} />}
+          {page === "dms" && <DMsPage2 currentUser={currentUser} setPage={setPage} showToast={showToast} initialUser={dmInitialUser} />}
           {showNav && <BottomNav page={page} setPage={setPage} />}
         </>
       )}
