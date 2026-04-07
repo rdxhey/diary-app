@@ -25,7 +25,13 @@ const FILTERS = {
   warm: "sepia(.16) saturate(1.18) contrast(1.03) brightness(1.03)",
   vintage: "sepia(.34) saturate(.92) contrast(1.08) brightness(.98)",
   grain: "contrast(1.14) saturate(.86) brightness(.97)",
+  bw: "grayscale(1) contrast(1.08) brightness(.98)",
   none: "none",
+};
+
+const displayHandle = (username, fallback = "user") => {
+  const clean = String(username || fallback).trim().replace(/^@+/, "");
+  return `@${clean || fallback}`;
 };
 
 // ============================================================
@@ -593,7 +599,7 @@ function SignupPage({ onBack, onSuccess, showToast }) {
       const { error: profileError } = await supabase.from("profiles").insert({
         id: userId,
         full_name: form.name,
-        username: form.username,
+        username: form.username.trim().replace(/^@+/, ""),
         bio: form.bio,
         avatar_url: avatarUrl,
       });
@@ -646,7 +652,7 @@ function SignupPage({ onBack, onSuccess, showToast }) {
               <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleAvatarPick} />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
-              <Input placeholder="@username" value={form.username} onChange={e => up("username", e.target.value)} icon="@" />
+              <Input placeholder="@username" value={form.username} onChange={e => up("username", e.target.value.replace(/^@+/, ""))} icon="@" />
               <Input placeholder="Your bio — what do you love to capture?" value={form.bio} onChange={e => up("bio", e.target.value)} multiline icon="✍" />
             </div>
             <div style={{ marginTop: "auto", paddingTop: 28 }}>
@@ -1322,10 +1328,10 @@ function CreatePage({ currentUser, showToast, setPage }) {
 
       <div style={{ marginBottom: 20 }}>
         <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 11, color: C.brown, marginBottom: 8, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase" }}>Film roll filter</p>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-          {["warm", "vintage", "grain"].map(f => (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          {["warm", "vintage", "grain", "bw"].map(f => (
             <button key={f} onClick={() => setFilterType(f)} style={{ background: filterType === f ? C.pink : C.white, color: filterType === f ? C.white : C.dark, border: `1.5px solid ${filterType === f ? C.pink : C.tan}`, borderRadius: 14, padding: "10px 8px", fontFamily: "'Lato',sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-              {f.charAt(0).toUpperCase() + f.slice(1)}
+              {f === "bw" ? "Black & White" : f.charAt(0).toUpperCase() + f.slice(1)}
             </button>
           ))}
         </div>
@@ -1391,7 +1397,7 @@ function DiscoverPage({ showToast, onOpenProfile }) {
             <div key={u.id} onClick={() => onOpenProfile?.(u.id)} style={{ display: "flex", alignItems: "center", gap: 12, background: C.white, borderRadius: 14, padding: "12px", marginBottom: 10, boxShadow: `0 2px 10px ${C.shadow}`, cursor: "pointer" }}>
               <Avatar src={u.avatar_url} size={44} />
               <div>
-                <p style={{ margin: 0, fontFamily: "'Lato',sans-serif", fontWeight: 700, fontSize: 14, color: C.dark }}>@{u.username}</p>
+                <p style={{ margin: 0, fontFamily: "'Lato',sans-serif", fontWeight: 700, fontSize: 14, color: C.dark }}>{displayHandle(u.username)}</p>
                 {u.bio && <p style={{ margin: 0, fontSize: 12, color: C.brown, fontFamily: "'Lato',sans-serif" }}>{u.bio}</p>}
               </div>
             </div>
@@ -1590,7 +1596,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
       let updates = {
         id: currentUser.id,
         full_name: form.full_name.trim(),
-        username: form.username.trim(),
+        username: form.username.trim().replace(/^@+/, ""),
         bio: form.bio.trim(),
         location: form.location.trim(),
       };
@@ -1637,12 +1643,12 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
     <div style={{ background: C.cream, minHeight: "100vh", paddingBottom: 100 }}>
       {showAvatarCropper && <ImageCropper image={avatarCropImage} shape="circle" onCrop={handleAvatarCropped} onCancel={() => setShowAvatarCropper(false)} />}
       {/* Cover */}
-      <div style={{ height: 198, position: "relative", overflow: "hidden", borderRadius: "0 0 34px 34px", boxShadow: `0 12px 30px ${C.shadow}` }}>
+      <div style={{ height: 198, position: "relative", overflow: "visible", borderRadius: "0 0 34px 34px", boxShadow: `0 12px 30px ${C.shadow}`, marginBottom: 54 }}>
         <img
           src={coverPreview || profileData?.cover_url || "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=800&q=80"}
-          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "0 0 34px 34px", display: "block" }}
         />
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom,rgba(74,55,40,.04),rgba(250,247,242,.62))" }} />
+        <div style={{ position: "absolute", inset: 0, borderRadius: "0 0 34px 34px", background: "linear-gradient(to bottom,rgba(74,55,40,.04),rgba(250,247,242,.62))" }} />
         {editMode && (
           <button onClick={() => coverRef.current.click()} style={{ position: "absolute", bottom: 10, right: 10, background: "rgba(255,255,255,0.9)", border: "none", borderRadius: 20, padding: "6px 12px", fontFamily: "'Lato',sans-serif", fontSize: 11, cursor: "pointer" }}>
             📷 Change Cover
@@ -1654,7 +1660,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
       </div>
 
       <div style={{ padding: "0 16px" }}>
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginTop: -44, marginBottom: 12, position: "relative", zIndex: 2 }}>
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginTop: -98, marginBottom: 12, position: "relative", zIndex: 2 }}>
           <div style={{ width: 88, height: 88, borderRadius: "50%", border: `4px solid ${C.cream}`, overflow: "hidden", boxShadow: `0 8px 24px ${C.shadow}`, position: "relative", background: C.beige, flexShrink: 0 }}>
             <img src={avatarSrc} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             {editMode && (
@@ -1675,14 +1681,14 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
         {editMode ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
             <Input placeholder="Full name" value={form.full_name} onChange={e => setForm(p => ({ ...p, full_name: e.target.value }))} />
-            <Input placeholder="@username" value={form.username} onChange={e => setForm(p => ({ ...p, username: e.target.value.replace(/\s/g, "").toLowerCase() }))} />
+            <Input placeholder="@username" value={form.username} onChange={e => setForm(p => ({ ...p, username: e.target.value.replace(/^@+/, "").replace(/\s/g, "").toLowerCase() }))} />
             <Input placeholder="Bio" value={form.bio} onChange={e => setForm(p => ({ ...p, bio: e.target.value }))} multiline />
             <Input placeholder="📍 Currently in..." value={form.location} onChange={e => setForm(p => ({ ...p, location: e.target.value }))} />
           </div>
         ) : (
           <>
             <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 19, color: C.dark, margin: "0 0 2px" }}>{displayName}</h2>
-            <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 4px" }}>@{username}</p>
+            <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 4px" }}>{displayHandle(username)}</p>
             {profileData?.bio && <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 13, color: C.dark, margin: "0 0 4px", lineHeight: 1.5 }}>{profileData.bio}</p>}
             {profile?.location && <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 14px" }}>📍 Currently in: {profile.location}</p>}
             {!profile?.location && profileData?.location && <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 14px" }}>Currently in: {profileData.location}</p>}
@@ -1803,17 +1809,17 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
 
   return (
     <div style={{ background: C.cream, minHeight: "100vh", paddingBottom: 100 }}>
-      <PageHeader title="Diary account" subtitle={`@${profile.username || "user"}`} onBack={() => setPage("home")} />
-      <div style={{ height: 210, overflow: "hidden", position: "relative", borderRadius: "0 0 34px 34px", boxShadow: `0 12px 30px ${C.shadow}` }}>
-        <img src={profile.cover_url || "https://images.unsplash.com/photo-1528164344705-47542687000d?w=900&q=80"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom,rgba(74,55,40,.05),rgba(250,247,242,.7))" }} />
+      <PageHeader title="Diary account" subtitle={displayHandle(profile.username)} onBack={() => setPage("home")} />
+      <div style={{ height: 210, overflow: "visible", position: "relative", borderRadius: "0 0 34px 34px", boxShadow: `0 12px 30px ${C.shadow}`, marginBottom: 54 }}>
+        <img src={profile.cover_url || "https://images.unsplash.com/photo-1528164344705-47542687000d?w=900&q=80"} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "0 0 34px 34px", display: "block" }} />
+        <div style={{ position: "absolute", inset: 0, borderRadius: "0 0 34px 34px", background: "linear-gradient(to bottom,rgba(74,55,40,.05),rgba(250,247,242,.7))" }} />
         <div style={{ position: "absolute", bottom: 18, left: 18, right: 18 }}>
           <p style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", fontSize: 28, color: C.white, textShadow: "0 2px 12px rgba(0,0,0,.35)" }}>{profile.full_name || profile.username || "Diary user"}</p>
           <p style={{ margin: "2px 0 0", fontSize: 12, color: C.cream, textShadow: "0 2px 12px rgba(0,0,0,.45)" }}>{profile.location ? `Currently in ${profile.location}` : "Rural memories"}</p>
         </div>
       </div>
       <div style={{ padding: "0 16px" }}>
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginTop: -42, marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginTop: -98, marginBottom: 14, position: "relative", zIndex: 2 }}>
           <div style={{ padding: 3, borderRadius: "50%", background: C.cream, boxShadow: `0 8px 24px ${C.shadow}` }}>
             <Avatar src={profile.avatar_url} size={86} active />
           </div>
@@ -1824,7 +1830,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
           </div>
         </div>
         <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, margin: "0 0 2px", fontSize: 26 }}>{profile.full_name || profile.username || "Diary user"}</h2>
-        <p style={{ margin: "0 0 8px", color: C.brown, fontFamily: "'Lato',sans-serif" }}>@{profile.username || "user"}</p>
+        <p style={{ margin: "0 0 8px", color: C.brown, fontFamily: "'Lato',sans-serif" }}>{displayHandle(profile.username)}</p>
         {profile.bio && <p style={{ color: C.dark, fontSize: 13, lineHeight: 1.55, marginBottom: 8 }}>{profile.bio}</p>}
         {profile.location && <p style={{ color: C.brown, fontSize: 12, marginBottom: 8 }}>Currently in: {profile.location}</p>}
         {currentUser?.id !== profileId && <button onClick={handleBlock} style={{ border: "none", background: "none", color: C.red, cursor: "pointer", padding: 0, marginBottom: 16 }}>Block user</button>}
@@ -1865,7 +1871,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
       {reportOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.white, borderRadius: 18, padding: 18, maxWidth: 340, width: "100%" }}>
-            <h3 style={{ marginTop: 0 }}>Report @{profile.username}</h3>
+            <h3 style={{ marginTop: 0 }}>Report {displayHandle(profile.username)}</h3>
             {["Unappropriate content", "Sexual content", "Not Diary taste", "Unaesthetic"].map(reason => <button key={reason} onClick={() => handleReport(reason)} style={{ display: "block", width: "100%", textAlign: "left", padding: 11, border: "none", borderBottom: `1px solid ${C.beige}`, background: "none" }}>{reason}</button>)}
             <Btn variant="secondary" onClick={() => setReportOpen(false)} style={{ width: "100%", marginTop: 12 }}>Cancel</Btn>
           </div>
@@ -2149,7 +2155,7 @@ function DMsPage({ currentUser }) {
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
             <button onClick={() => setActive(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: C.brown }}>←</button>
             <Avatar src={active.avatar_url} size={36} />
-            <span style={{ fontFamily: "'Lato',sans-serif", fontWeight: 700, fontSize: 15, color: C.dark }}>@{active.username}</span>
+            <span style={{ fontFamily: "'Lato',sans-serif", fontWeight: 700, fontSize: 15, color: C.dark }}>{displayHandle(active.username)}</span>
           </div>
           <div style={{ minHeight: 300, marginBottom: 16 }}>
             {messages.map(m => (
@@ -2177,7 +2183,7 @@ function DMsPage({ currentUser }) {
             <div key={c.id} onClick={() => openConvo(c)} style={{ display: "flex", alignItems: "center", gap: 12, background: C.white, borderRadius: 16, padding: "13px", marginBottom: 10, boxShadow: `0 2px 10px ${C.shadow}`, cursor: "pointer" }}>
               <Avatar src={c.avatar_url} size={48} />
               <div style={{ flex: 1 }}>
-                <p style={{ margin: 0, fontFamily: "'Lato',sans-serif", fontWeight: 700, fontSize: 13, color: C.dark }}>@{c.username}</p>
+                <p style={{ margin: 0, fontFamily: "'Lato',sans-serif", fontWeight: 700, fontSize: 13, color: C.dark }}>{displayHandle(c.username)}</p>
                 <p style={{ margin: "3px 0 0", fontSize: 12, color: C.brown, fontFamily: "'Lato',sans-serif" }}>{c.lastMsg}</p>
               </div>
             </div>
@@ -2274,7 +2280,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser }) {
       {active ? (
         <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
           <PageHeader
-            title={`@${active.username || "diary"}`}
+            title={displayHandle(active.username, "diary")}
             subtitle={active.full_name || "Diary message"}
             onBack={() => setActive(null)}
             right={<Avatar src={active.avatar_url} size={38} active />}
@@ -2284,7 +2290,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser }) {
               <div style={{ textAlign: "center", padding: "50px 20px", color: C.brown }}>
                 <div style={{ display: "flex", justifyContent: "center" }}><Avatar src={active.avatar_url} size={72} active /></div>
                 <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, marginBottom: 4 }}>Start your Diary chat</h3>
-                <p style={{ fontSize: 13 }}>Send a private message to @{active.username || "this user"}.</p>
+                <p style={{ fontSize: 13 }}>Send a private message to {displayHandle(active.username, "this user")}.</p>
               </div>
             )}
             {messages.map(m => (
@@ -2315,7 +2321,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser }) {
                   <button key={p.id} onClick={() => { setSearch(""); setPeople([]); openConvo(p); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 13, border: "none", borderBottom: `1px solid ${C.beige}`, background: C.white, cursor: "pointer", textAlign: "left" }}>
                     <Avatar src={p.avatar_url} size={44} active />
                     <div>
-                      <p style={{ margin: 0, color: C.dark, fontWeight: 700 }}>@{p.username || "user"}</p>
+                      <p style={{ margin: 0, color: C.dark, fontWeight: 700 }}>{displayHandle(p.username)}</p>
                       <p style={{ margin: "2px 0 0", color: C.brown, fontSize: 12 }}>{p.full_name || "Diary user"}</p>
                     </div>
                   </button>
@@ -2332,7 +2338,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser }) {
               <div key={c.id} onClick={() => openConvo(c)} style={{ display: "flex", alignItems: "center", gap: 12, background: C.white, borderRadius: 18, padding: "13px", marginBottom: 10, boxShadow: `0 2px 10px ${C.shadow}`, cursor: "pointer" }}>
                 <Avatar src={c.avatar_url} size={52} active />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ margin: 0, fontFamily: "'Lato',sans-serif", fontWeight: 800, fontSize: 14, color: C.dark }}>@{c.username || "user"}</p>
+                  <p style={{ margin: 0, fontFamily: "'Lato',sans-serif", fontWeight: 800, fontSize: 14, color: C.dark }}>{displayHandle(c.username)}</p>
                   <p style={{ margin: "3px 0 0", fontSize: 12, color: C.brown, fontFamily: "'Lato',sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.lastMsg}</p>
                 </div>
                 <span style={{ color: C.tan, fontSize: 18 }}>{">"}</span>
