@@ -25,11 +25,34 @@ const C = {
 function FontLoader() {
   useEffect(() => {
     const l = document.createElement("link");
-    l.href = "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lato:wght@300;400;600;700&display=swap";
+    l.href = "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lato:wght@300;400;600;700&family=Noto+Serif:wght@400;600;700&display=swap";
     l.rel = "stylesheet";
     document.head.appendChild(l);
   }, []);
   return null;
+}
+
+function LovableVibeStyle() {
+  return (
+    <style>{`
+      body {
+        background:
+          radial-gradient(circle at 18px 18px, rgba(212,197,176,0.10) 0 5px, transparent 6px),
+          radial-gradient(circle at 58px 58px, rgba(232,134,154,0.06) 0 4px, transparent 5px),
+          #FAF7F2;
+        background-size: 72px 72px;
+      }
+      button, input, textarea { -webkit-tap-highlight-color: transparent; }
+      @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+      @keyframes softPop{0%{transform:scale(.96);opacity:.4}100%{transform:scale(1);opacity:1}}
+      .diary-paper {
+        background:
+          radial-gradient(circle at 20px 20px, rgba(212,197,176,0.12) 0 4px, transparent 5px),
+          linear-gradient(180deg, rgba(255,255,255,0.88), rgba(250,247,242,0.96));
+        background-size: 64px 64px, auto;
+      }
+    `}</style>
+  );
 }
 
 // ============================================================
@@ -139,6 +162,30 @@ function Toast({ msg, type = "success" }) {
       boxShadow: `0 8px 24px ${C.shadow}`, animation: "fadeUp 0.3s ease",
     }}>{msg}</div>
   ) : null;
+}
+
+function PageHeader({ title, subtitle, onBack, right }) {
+  return (
+    <div style={{
+      position: "sticky", top: 0, zIndex: 60, background: "rgba(250,247,242,0.92)",
+      backdropFilter: "blur(14px)", borderBottom: `1px solid ${C.beige}`,
+      padding: "14px 16px", boxShadow: `0 8px 24px rgba(74,55,40,0.04)`,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {onBack && (
+          <button onClick={onBack} aria-label="Back" style={{
+            width: 36, height: 36, borderRadius: "50%", border: `1px solid ${C.beige}`,
+            background: C.white, color: C.dark, cursor: "pointer", fontSize: 18,
+          }}>{"<"}</button>
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h1 style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, fontSize: 24, lineHeight: 1.1 }}>{title}</h1>
+          {subtitle && <p style={{ margin: "3px 0 0", color: C.brown, fontSize: 12, fontStyle: "italic" }}>{subtitle}</p>}
+        </div>
+        {right}
+      </div>
+    </div>
+  );
 }
 
 function Avatar({ src, size = 40, active = false, onClick }) {
@@ -549,7 +596,9 @@ function LoginPage({ onBack, onSuccess, showToast }) {
 function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProfile, onDeletePost }) {
   const [burst, setBurst] = useState(null);
   const [showComments, setShowComments] = useState(false);
+  const [showActions, setShowActions] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [showFullDiary, setShowFullDiary] = useState(false);
   const [comment, setComment] = useState("");
   const [comments, setComments] = useState([]);
   const [loadingComment, setLoadingComment] = useState(false);
@@ -574,9 +623,16 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
     }
   };
 
+  const copyLink = async () => {
+    await navigator.clipboard.writeText(`${window.location.origin}/?post=${post.id}`);
+    setShowActions(false);
+    showToast("Post link copied!");
+  };
+
   const handleReport = async (reason) => {
     if (!currentUser) { showToast("Sign in to report posts", "error"); return; }
     await supabase.from("reports").insert({ post_id: post.id, reporter_id: currentUser.id, reported_user_id: post.user_id, reason });
+    setShowActions(false);
     setShowReport(false);
     showToast("Report sent to Diary");
   };
@@ -618,6 +674,14 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
     setShowComments(!showComments);
   };
 
+  const menuItem = (label, onClick, danger = false) => (
+    <button onClick={onClick} style={{
+      width: "100%", padding: "14px 6px", border: "none", borderBottom: `1px solid ${C.beige}`,
+      background: "transparent", color: danger ? C.red : C.dark, cursor: "pointer",
+      textAlign: "left", fontFamily: "'Lato',sans-serif", fontSize: 14, fontWeight: danger ? 700 : 600,
+    }}>{label}</button>
+  );
+
   return (
     <div style={{ background: C.white, borderRadius: 20, overflow: "hidden", marginBottom: 16, boxShadow: `0 4px 20px ${C.shadow}` }}>
       {post.is_sponsored && (
@@ -636,7 +700,7 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
             {post.location && <p style={{ margin: 0, fontSize: 11, color: C.brown, fontFamily: "'Lato',sans-serif" }}>📍 {post.location}</p>}
           </div>
         </div>
-        <button style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: C.tan }}>⋯</button>
+        <button onClick={() => setShowActions(true)} aria-label="Post actions" style={{ background: "none", border: "none", fontSize: 24, lineHeight: 1, cursor: "pointer", color: C.brown, padding: "2px 8px" }}>...</button>
       </div>
 
       {/* Image */}
@@ -670,12 +734,6 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
         <p style={{ margin: 0, fontSize: 11, color: C.tan, fontFamily: "'Lato',sans-serif" }}>
           {new Date(post.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
         </p>
-        <div style={{ display: "flex", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
-          <button onClick={handleShare} style={{ background: C.beige, border: "none", borderRadius: 999, padding: "6px 10px", cursor: "pointer", color: C.dark, fontSize: 12 }}>Share / copy link</button>
-          {currentUser?.id === post.user_id && <button onClick={() => onDeletePost?.(post.id)} style={{ background: C.beige, border: "none", borderRadius: 999, padding: "6px 10px", cursor: "pointer", color: C.red, fontSize: 12 }}>Delete post</button>}
-          {currentUser?.id !== post.user_id && <button onClick={() => setShowReport(true)} style={{ background: C.beige, border: "none", borderRadius: 999, padding: "6px 10px", cursor: "pointer", color: C.red, fontSize: 12 }}>Report</button>}
-        </div>
-
         {/* Comments */}
         {showComments && (
           <div style={{ marginTop: 12, borderTop: `1px solid ${C.beige}`, paddingTop: 12 }}>
@@ -699,6 +757,21 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
           </div>
         )}
       </div>
+      {showActions && (
+        <div onClick={() => setShowActions(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 9998, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 460, background: C.white, borderRadius: "24px 24px 0 0", padding: "12px 18px 24px", boxShadow: `0 -14px 40px ${C.shadow}` }}>
+            <div style={{ width: 42, height: 4, borderRadius: 999, background: C.tan, margin: "0 auto 12px", opacity: 0.7 }} />
+            <h3 style={{ margin: "0 0 8px", fontFamily: "'Playfair Display',Georgia,serif", color: C.dark }}>Diary options</h3>
+            {menuItem("View full Diary", () => { setShowFullDiary(true); setShowActions(false); })}
+            {menuItem(post.liked ? "Not Diared" : "Diared it", (e) => { handleLike(e); setShowActions(false); })}
+            {menuItem("Share", async () => { await handleShare(); setShowActions(false); })}
+            {menuItem("Copy link", copyLink)}
+            {currentUser?.id === post.user_id && menuItem("Delete post", () => { setShowActions(false); onDeletePost?.(post.id); }, true)}
+            {currentUser?.id !== post.user_id && menuItem("Report to Diary authority", () => { setShowReport(true); setShowActions(false); }, true)}
+            {menuItem("Cancel", () => setShowActions(false))}
+          </div>
+        </div>
+      )}
       {showReport && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.white, borderRadius: 18, padding: 18, maxWidth: 340, width: "100%", boxShadow: `0 10px 35px ${C.shadow}` }}>
@@ -707,6 +780,17 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
               <button key={reason} onClick={() => handleReport(reason)} style={{ display: "block", width: "100%", textAlign: "left", padding: "11px 0", background: "none", border: "none", borderBottom: `1px solid ${C.beige}`, cursor: "pointer", color: C.dark }}>{reason}</button>
             ))}
             <Btn variant="secondary" onClick={() => setShowReport(false)} style={{ width: "100%", marginTop: 12 }}>Cancel</Btn>
+          </div>
+        </div>
+      )}
+      {showFullDiary && (
+        <div style={{ position: "fixed", inset: 0, background: C.dark, zIndex: 9999, display: "flex", flexDirection: "column" }}>
+          <PageHeader title="Full Diary" subtitle={post.location || post.profiles?.username || "Diary moment"} onBack={() => setShowFullDiary(false)} />
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: C.dark }}>
+            <img src={post.image_url} style={{ width: "100%", maxHeight: "78vh", objectFit: "contain" }} />
+          </div>
+          <div style={{ background: C.white, padding: 16 }}>
+            <p style={{ margin: 0, color: C.dark, fontFamily: "'Lato',sans-serif", lineHeight: 1.5 }}>{post.caption || "A Diary moment"}</p>
           </div>
         </div>
       )}
@@ -1533,7 +1617,7 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser }) {
 // ============================================================
 // NOTIFICATIONS PAGE
 // ============================================================
-function NotificationsPage({ currentUser }) {
+function NotificationsPage({ currentUser, setPage }) {
   const [notifs, setNotifs] = useState([]);
   useEffect(() => {
     if (!currentUser) return;
@@ -1551,7 +1635,7 @@ function NotificationsPage({ currentUser }) {
 
   return (
     <div style={{ padding: "56px 16px 100px", background: C.cream, minHeight: "100vh" }}>
-      <h1 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 25, color: C.dark, marginBottom: 18 }}>Notifications</h1>
+      <PageHeader title="Notifications" subtitle="Diary updates" onBack={() => setPage("home")} />
       {notifs.length === 0 ? (
         <div style={{ textAlign: "center", padding: "40px 0" }}>
           <p style={{ fontSize: 32 }}>🔔</p>
@@ -1663,6 +1747,159 @@ function DMsPage({ currentUser }) {
   );
 }
 
+function DMsPage2({ currentUser, setPage, showToast }) {
+  const [conversations, setConversations] = useState([]);
+  const [active, setActive] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [newMsg, setNewMsg] = useState("");
+  const [search, setSearch] = useState("");
+  const [people, setPeople] = useState([]);
+
+  const loadConversations = useCallback(async () => {
+    if (!currentUser) return;
+    const { data } = await supabase.from("messages")
+      .select("*, sender:profiles!messages_sender_id_fkey(username, full_name, avatar_url), receiver:profiles!messages_receiver_id_fkey(username, full_name, avatar_url)")
+      .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
+      .order("created_at", { ascending: false });
+    const seen = new Set();
+    const convos = [];
+    (data || []).forEach(m => {
+      const other = m.sender_id === currentUser.id ? m.receiver : m.sender;
+      const otherId = m.sender_id === currentUser.id ? m.receiver_id : m.sender_id;
+      if (other && !seen.has(otherId)) {
+        seen.add(otherId);
+        convos.push({ ...other, id: otherId, lastMsg: m.content, time: m.created_at });
+      }
+    });
+    setConversations(convos);
+  }, [currentUser]);
+
+  useEffect(() => { loadConversations(); }, [loadConversations]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const channel = supabase.channel(`diary-dm-${currentUser.id}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, payload => {
+        const m = payload.new;
+        if (m.sender_id === currentUser.id || m.receiver_id !== currentUser.id) return;
+        if (active && (m.sender_id === active.id || m.receiver_id === active.id)) setMessages(prev => [...prev, m]);
+        loadConversations();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [currentUser, active, loadConversations]);
+
+  useEffect(() => {
+    if (!currentUser || search.trim().length < 2) { setPeople([]); return; }
+    const t = setTimeout(async () => {
+      const { data } = await supabase.from("profiles")
+        .select("id, username, full_name, avatar_url")
+        .neq("id", currentUser.id)
+        .or(`username.ilike.%${search}%,full_name.ilike.%${search}%`)
+        .limit(8);
+      setPeople(data || []);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [search, currentUser]);
+
+  const openConvo = async (user) => {
+    setActive(user);
+    const { data } = await supabase.from("messages")
+      .select("*")
+      .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${user.id}),and(sender_id.eq.${user.id},receiver_id.eq.${currentUser.id})`)
+      .order("created_at", { ascending: true });
+    setMessages(data || []);
+  };
+
+  const sendMsg = async () => {
+    if (!newMsg.trim() || !active) return;
+    const content = newMsg.trim();
+    setNewMsg("");
+    const { data, error } = await supabase.from("messages")
+      .insert({ sender_id: currentUser.id, receiver_id: active.id, content })
+      .select("*")
+      .single();
+    if (error) { showToast?.("Message could not send", "error"); return; }
+    if (data) setMessages(prev => [...prev, data]);
+    loadConversations();
+  };
+
+  return (
+    <div style={{ background: C.cream, minHeight: "100vh", paddingBottom: active ? 0 : 100 }}>
+      {active ? (
+        <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+          <PageHeader
+            title={`@${active.username || "diary"}`}
+            subtitle={active.full_name || "Diary message"}
+            onBack={() => setActive(null)}
+            right={<Avatar src={active.avatar_url} size={38} active />}
+          />
+          <div style={{ flex: 1, padding: "16px 14px 90px", overflowY: "auto", background: "linear-gradient(180deg,#FAF7F2,#FFF)" }}>
+            {messages.length === 0 && (
+              <div style={{ textAlign: "center", padding: "50px 20px", color: C.brown }}>
+                <div style={{ display: "flex", justifyContent: "center" }}><Avatar src={active.avatar_url} size={72} active /></div>
+                <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, marginBottom: 4 }}>Start your Diary chat</h3>
+                <p style={{ fontSize: 13 }}>Send a private message to @{active.username || "this user"}.</p>
+              </div>
+            )}
+            {messages.map(m => (
+              <div key={m.id} style={{ display: "flex", justifyContent: m.sender_id === currentUser.id ? "flex-end" : "flex-start", marginBottom: 9 }}>
+                <div style={{
+                  background: m.sender_id === currentUser.id ? `linear-gradient(135deg,${C.pink},${C.dark})` : C.white,
+                  color: m.sender_id === currentUser.id ? C.white : C.dark,
+                  borderRadius: m.sender_id === currentUser.id ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                  padding: "10px 14px", maxWidth: "76%", fontFamily: "'Lato',sans-serif", fontSize: 14,
+                  boxShadow: `0 4px 14px ${C.shadow}`,
+                }}>{m.content}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, padding: "10px 12px 14px", background: "rgba(255,255,255,0.94)", borderTop: `1px solid ${C.beige}`, display: "flex", gap: 8, boxSizing: "border-box" }}>
+            <input value={newMsg} onChange={e => setNewMsg(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMsg()} placeholder="Message..." style={{ flex: 1, padding: "13px 16px", border: `1.5px solid ${C.tan}`, borderRadius: 999, fontFamily: "'Lato',sans-serif", fontSize: 14, outline: "none", background: C.white }} />
+            <button onClick={sendMsg} style={{ background: C.pink, border: "none", borderRadius: 999, minWidth: 56, color: C.white, cursor: "pointer", fontSize: 13, fontWeight: 800 }}>Send</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <PageHeader title="Messages" subtitle="Private Diary conversations" onBack={() => setPage("home")} />
+          <div style={{ padding: 16 }}>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search people to message..." style={{ width: "100%", boxSizing: "border-box", padding: "13px 16px", border: `1.5px solid ${C.tan}`, borderRadius: 16, outline: "none", background: C.white, fontFamily: "'Lato',sans-serif" }} />
+            {people.length > 0 && (
+              <div style={{ marginTop: 12, background: C.white, borderRadius: 18, overflow: "hidden", boxShadow: `0 4px 18px ${C.shadow}` }}>
+                {people.map(p => (
+                  <button key={p.id} onClick={() => { setSearch(""); setPeople([]); openConvo(p); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 13, border: "none", borderBottom: `1px solid ${C.beige}`, background: C.white, cursor: "pointer", textAlign: "left" }}>
+                    <Avatar src={p.avatar_url} size={44} active />
+                    <div>
+                      <p style={{ margin: 0, color: C.dark, fontWeight: 700 }}>@{p.username || "user"}</p>
+                      <p style={{ margin: "2px 0 0", color: C.brown, fontSize: 12 }}>{p.full_name || "Diary user"}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            <h2 style={{ margin: "24px 0 12px", fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, fontSize: 21 }}>Inbox</h2>
+            {conversations.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "44px 18px", background: C.white, borderRadius: 24, boxShadow: `0 8px 28px ${C.shadow}` }}>
+                <p style={{ fontSize: 34, margin: 0, color: C.dark, fontFamily: "'Playfair Display',Georgia,serif" }}>DM</p>
+                <p style={{ fontFamily: "'Playfair Display',Georgia,serif", color: C.brown, fontStyle: "italic" }}>No messages yet. Search a user above to start one.</p>
+              </div>
+            ) : conversations.map(c => (
+              <div key={c.id} onClick={() => openConvo(c)} style={{ display: "flex", alignItems: "center", gap: 12, background: C.white, borderRadius: 18, padding: "13px", marginBottom: 10, boxShadow: `0 2px 10px ${C.shadow}`, cursor: "pointer" }}>
+                <Avatar src={c.avatar_url} size={52} active />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: 0, fontFamily: "'Lato',sans-serif", fontWeight: 800, fontSize: 14, color: C.dark }}>@{c.username || "user"}</p>
+                  <p style={{ margin: "3px 0 0", fontSize: 12, color: C.brown, fontFamily: "'Lato',sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.lastMsg}</p>
+                </div>
+                <span style={{ color: C.tan, fontSize: 18 }}>{">"}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ============================================================
 // MAIN APP
 // ============================================================
@@ -1734,9 +1971,9 @@ export default function DiaryApp() {
   );
 
   return (
-    <div style={{ width: "100%", maxWidth: 480, margin: "0 auto", background: C.cream, minHeight: "100vh", position: "relative", overflowX: "hidden" }}>
+    <div className="diary-paper" style={{ width: "100%", maxWidth: 480, margin: "0 auto", background: C.cream, minHeight: "100vh", position: "relative", overflowX: "hidden", boxShadow: `0 0 0 1px ${C.beige}` }}>
       <FontLoader />
-      <style>{`@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}`}</style>
+      <LovableVibeStyle />
 
       <Toast msg={toast.msg} type={toast.type} />
 
@@ -1753,8 +1990,8 @@ export default function DiaryApp() {
           {page === "profile" && <ProfilePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onLogout={handleLogout} onProfileUpdated={setProfile} />}
           {page === "publicProfile" && <PublicProfilePage profileId={viewProfileId} currentUser={currentUser} setPage={setPage} showToast={showToast} />}
           {page === "settings" && <SettingsPage onLogout={handleLogout} setPage={setPage} showToast={showToast} currentUser={currentUser} />}
-          {page === "notifications" && <NotificationsPage currentUser={currentUser} />}
-          {page === "dms" && <DMsPage currentUser={currentUser} />}
+          {page === "notifications" && <NotificationsPage currentUser={currentUser} setPage={setPage} />}
+          {page === "dms" && <DMsPage2 currentUser={currentUser} setPage={setPage} showToast={showToast} />}
           {showNav && <BottomNav page={page} setPage={setPage} />}
         </>
       )}
