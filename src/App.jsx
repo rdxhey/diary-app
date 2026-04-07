@@ -549,7 +549,6 @@ function LoginPage({ onBack, onSuccess, showToast }) {
 function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProfile, onDeletePost }) {
   const [burst, setBurst] = useState(null);
   const [showComments, setShowComments] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [comment, setComment] = useState("");
   const [comments, setComments] = useState([]);
@@ -579,7 +578,6 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
     if (!currentUser) { showToast("Sign in to report posts", "error"); return; }
     await supabase.from("reports").insert({ post_id: post.id, reporter_id: currentUser.id, reported_user_id: post.user_id, reason });
     setShowReport(false);
-    setShowMenu(false);
     showToast("Report sent to Diary");
   };
 
