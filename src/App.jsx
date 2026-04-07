@@ -1175,6 +1175,7 @@ function CreatePage({ currentUser, showToast, setPage }) {
   const [category, setCategory] = useState("rural");
   const [season, setSeason] = useState("spring");
   const [filterType, setFilterType] = useState("warm");
+  const [rotation, setRotation] = useState(0);
   const [imageFile, setImageFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -1192,18 +1193,44 @@ function CreatePage({ currentUser, showToast, setPage }) {
   const handleCropped = (blob, url) => {
     setImageFile(new File([blob], "post.jpg", { type: "image/jpeg" }));
     setPreview(url);
+    setRotation(0);
     setShowCropper(false);
   };
+
+  const rotateImageFile = (file, degrees) => new Promise((resolve, reject) => {
+    const normalized = ((degrees % 360) + 360) % 360;
+    if (!normalized) { resolve(file); return; }
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      const sideways = normalized === 90 || normalized === 270;
+      canvas.width = sideways ? img.height : img.width;
+      canvas.height = sideways ? img.width : img.height;
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((normalized * Math.PI) / 180);
+      ctx.drawImage(img, -img.width / 2, -img.height / 2);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(blob => {
+        if (!blob) { reject(new Error("Could not rotate image")); return; }
+        resolve(new File([blob], file.name || "post.jpg", { type: "image/jpeg" }));
+      }, "image/jpeg", 0.92);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Could not load image for rotation")); };
+    img.src = url;
+  });
 
   const handlePost = async () => {
     if (!imageFile || !currentUser) return;
     if (!location.trim()) { showToast("Location is required for every Diary post", "error"); return; }
     setLoading(true);
     try {
+      const uploadFile = await rotateImageFile(imageFile, rotation);
       // Upload image
-      const ext = imageFile.name.split(".").pop();
+      const ext = uploadFile.name.split(".").pop();
       const path = `posts/${currentUser.id}/${Date.now()}.${ext}`;
-      const { error: uploadErr } = await supabase.storage.from("diary-media").upload(path, imageFile);
+      const { error: uploadErr } = await supabase.storage.from("diary-media").upload(path, uploadFile);
       if (uploadErr) throw uploadErr;
 
       const { data: urlData } = supabase.storage.from("diary-media").getPublicUrl(path);
@@ -1232,7 +1259,7 @@ function CreatePage({ currentUser, showToast, setPage }) {
       if (postErr) throw postErr;
 
       showToast("Moment shared! 🌸");
-      setCaption(""); setLocation(""); setImageFile(null); setPreview(null); setSeason("spring"); setFilterType("warm");
+      setCaption(""); setLocation(""); setImageFile(null); setPreview(null); setSeason("spring"); setFilterType("warm"); setRotation(0);
       setPage("home");
     } catch (err) {
       showToast(err.message || "Failed to post", "error");
@@ -1249,7 +1276,7 @@ function CreatePage({ currentUser, showToast, setPage }) {
 
       {/* Upload area */}
       <div onClick={() => fileRef.current.click()} style={{ width: "100%", aspectRatio: "1", background: C.beige, borderRadius: 20, border: `2px dashed ${C.tan}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", marginBottom: 18, overflow: "hidden" }}>
-        {preview ? <img src={preview} style={{ width: "100%", height: "100%", objectFit: "cover", filter: FILTERS[filterType] || "none" }} /> : (
+        {preview ? <img src={preview} style={{ width: "100%", height: "100%", objectFit: "cover", filter: FILTERS[filterType] || "none", transform: `rotate(${rotation}deg)`, transition: "transform .25s ease, filter .25s ease" }} /> : (
           <>
             <span style={{ fontSize: 46 }}>📷</span>
             <p style={{ fontFamily: "'Lato',sans-serif", color: C.brown, fontSize: 14, marginTop: 10 }}>Tap to upload your moment</p>
@@ -1258,6 +1285,12 @@ function CreatePage({ currentUser, showToast, setPage }) {
         )}
       </div>
       <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={pickImage} />
+      {preview && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, margin: "-6px 0 18px" }}>
+          <button onClick={() => setRotation(r => (r + 270) % 360)} style={{ background: C.white, border: `1.5px solid ${C.tan}`, borderRadius: 14, padding: "11px 10px", fontFamily: "'Lato',sans-serif", fontSize: 13, fontWeight: 800, color: C.dark, cursor: "pointer" }}>↺ Rotate left</button>
+          <button onClick={() => setRotation(r => (r + 90) % 360)} style={{ background: C.white, border: `1.5px solid ${C.tan}`, borderRadius: 14, padding: "11px 10px", fontFamily: "'Lato',sans-serif", fontSize: 13, fontWeight: 800, color: C.dark, cursor: "pointer" }}>Rotate right ↻</button>
+        </div>
+      )}
 
       <Input placeholder="Write your moment... what does this place feel like?" value={caption} onChange={e => setCaption(e.target.value)} multiline style={{ marginBottom: 13 }} />
       <Input placeholder="📍 Add location" value={location} onChange={e => setLocation(e.target.value)} style={{ marginBottom: 13 }} />
