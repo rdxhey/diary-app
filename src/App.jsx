@@ -227,41 +227,65 @@ function LandingPage({ onSignup, onLogin }) {
 // ============================================================
 // SIGNUP PAGE — REAL SUPABASE AUTH
 // ============================================================
-function ImageCropper({ image, aspect = 1, onCrop, onCancel }) {
+function ImageCropper({ image, shape = "circle", onCrop, onCancel }) {
   const canvasRef = useRef(null);
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [imgEl, setImgEl] = useState(null);
+  const [ratio, setRatio] = useState("free");
   const CROP_SIZE = 300;
+  const CROP_MAX = 320;
+  const ratioOptions = [
+    { label: "1:1", value: "1:1", aspect: 1 },
+    { label: "4:3", value: "4:3", aspect: 4 / 3 },
+    { label: "16:9", value: "16:9", aspect: 16 / 9 },
+    { label: "Free \u2702\ufe0f", value: "free", aspect: null },
+  ];
+  const selectedRatio = ratioOptions.find((option) => option.value === ratio) || ratioOptions[3];
+  const naturalAspect = imgEl ? imgEl.width / imgEl.height : 1;
+  const cropAspect = shape === "circle" ? 1 : selectedRatio.aspect || naturalAspect;
+  const cropWidth = shape === "circle" ? CROP_SIZE : cropAspect >= 1 ? CROP_MAX : Math.round(CROP_MAX * cropAspect);
+  const cropHeight = shape === "circle" ? CROP_SIZE : cropAspect >= 1 ? Math.round(CROP_MAX / cropAspect) : CROP_MAX;
 
   useEffect(() => {
     const img = new Image();
-    img.onload = () => setImgEl(img);
+    img.onload = () => {
+      setImgEl(img);
+      setScale(1);
+      setOffset({ x: 0, y: 0 });
+    };
     img.src = image;
   }, [image]);
 
   useEffect(() => {
     if (!imgEl || !canvasRef.current) return;
     const ctx = canvasRef.current.getContext("2d");
-    ctx.clearRect(0, 0, CROP_SIZE, CROP_SIZE);
+    ctx.clearRect(0, 0, cropWidth, cropHeight);
     ctx.save();
-    ctx.beginPath();
-    ctx.arc(CROP_SIZE / 2, CROP_SIZE / 2, CROP_SIZE / 2, 0, Math.PI * 2);
-    ctx.clip();
-    const w = imgEl.width * scale;
-    const h = imgEl.height * scale;
-    const x = (CROP_SIZE - w) / 2 + offset.x;
-    const y = (CROP_SIZE - h) / 2 + offset.y;
+    if (shape === "circle") {
+      ctx.beginPath();
+      ctx.arc(cropWidth / 2, cropHeight / 2, cropWidth / 2, 0, Math.PI * 2);
+      ctx.clip();
+    }
+    const coverScale = Math.max(cropWidth / imgEl.width, cropHeight / imgEl.height);
+    const w = imgEl.width * coverScale * scale;
+    const h = imgEl.height * coverScale * scale;
+    const x = (cropWidth - w) / 2 + offset.x;
+    const y = (cropHeight - h) / 2 + offset.y;
     ctx.drawImage(imgEl, x, y, w, h);
     ctx.restore();
     ctx.strokeStyle = "rgba(255,255,255,0.8)";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(CROP_SIZE / 2, CROP_SIZE / 2, CROP_SIZE / 2 - 1, 0, Math.PI * 2);
+    if (shape === "circle") {
+      ctx.arc(cropWidth / 2, cropHeight / 2, cropWidth / 2 - 1, 0, Math.PI * 2);
+    } else {
+      ctx.rect(1, 1, cropWidth - 2, cropHeight - 2);
+    }
     ctx.stroke();
-  }, [imgEl, scale, offset]);
+  }, [imgEl, scale, offset, shape, cropWidth, cropHeight]);
 
   const onMouseDown = (e) => {
     setDragging(true);
@@ -284,6 +308,12 @@ function ImageCropper({ image, aspect = 1, onCrop, onCancel }) {
     setOffset({ x: t.clientX - dragStart.x, y: t.clientY - dragStart.y });
   };
 
+  const handleRatioChange = (nextRatio) => {
+    setRatio(nextRatio);
+    setScale(1);
+    setOffset({ x: 0, y: 0 });
+  };
+
   const handleCrop = () => {
     canvasRef.current.toBlob((blob) => {
       onCrop(blob, URL.createObjectURL(blob));
@@ -300,14 +330,28 @@ function ImageCropper({ image, aspect = 1, onCrop, onCancel }) {
         Drag &amp; zoom to crop your photo
       </p>
       <canvas
-        ref={canvasRef} width={CROP_SIZE} height={CROP_SIZE}
-        style={{ borderRadius: "50%", cursor: dragging ? "grabbing" : "grab", boxShadow: "0 0 0 4px rgba(255,255,255,0.2)" }}
+        ref={canvasRef} width={cropWidth} height={cropHeight}
+        style={{ borderRadius: shape === "circle" ? "50%" : 18, cursor: dragging ? "grabbing" : "grab", boxShadow: "0 0 0 4px rgba(255,255,255,0.2)" }}
         onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
         onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onMouseUp}
       />
+      {shape === "rect" && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", maxWidth: 340 }}>
+          {ratioOptions.map((option) => (
+            <button key={option.value} onClick={() => handleRatioChange(option.value)} style={{
+              padding: "8px 14px", borderRadius: 999,
+              border: ratio === option.value ? "1.5px solid #fff" : "1.5px solid rgba(255,255,255,0.28)",
+              background: ratio === option.value ? "#fff" : "rgba(255,255,255,0.08)",
+              color: ratio === option.value ? "#222" : "#fff",
+              fontFamily: "'Lato',sans-serif", fontSize: 13, fontWeight: 700,
+              cursor: "pointer"
+            }}>{option.label}</button>
+          ))}
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <span style={{ color: "#ccc", fontSize: 13 }}>🔍</span>
-        <input type="range" min="0.5" max="3" step="0.01" value={scale}
+        <input type="range" min="1" max="3" step="0.01" value={scale}
           onChange={(e) => setScale(parseFloat(e.target.value))}
           style={{ width: 180, accentColor: "#E8735A" }}
         />
@@ -398,7 +442,7 @@ function SignupPage({ onBack, onSuccess, showToast }) {
 
   return (
     <div style={{ minHeight: "100vh", background: C.cream, fontFamily: "'Lato',sans-serif" }}>
-      {showCropper && <ImageCropper image={cropImage} aspect={1} onCrop={handleCropped} onCancel={() => setShowCropper(false)} />}
+      {showCropper && <ImageCropper image={cropImage} shape="circle" onCrop={handleCropped} onCancel={() => setShowCropper(false)} />}
       <div style={{ padding: "56px 16px 24px", flex: 1, display: "flex", flexDirection: "column", width: "100%", boxSizing: "border-box" }}>
         <div style={{ display: "flex", alignItems: "center", marginBottom: 28 }}>
           <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: C.brown, marginRight: 12 }}>←</button>
@@ -845,7 +889,7 @@ function CreatePage({ currentUser, showToast, setPage }) {
 
   return (
     <div style={{ padding: "56px 16px 100px", background: C.cream, minHeight: "100vh" }}>
-      {showCropper && <ImageCropper image={cropImage} aspect={4/3} onCrop={handleCropped} onCancel={() => setShowCropper(false)} />}
+      {showCropper && <ImageCropper image={cropImage} shape="rect" onCrop={handleCropped} onCancel={() => setShowCropper(false)} />}
       <h1 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 25, color: C.dark, margin: "0 0 4px" }}>New Moment</h1>
       <p style={{ color: C.brown, fontSize: 13, fontFamily: "'Lato',sans-serif", marginBottom: 22 }}>Share a real moment with the world</p>
 
