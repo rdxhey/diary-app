@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
+import maplibregl from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 
 // ============================================================
 // SUPABASE CLIENT
@@ -17,6 +19,13 @@ const C = {
   brown: "#8B6F5E", dark: "#4A3728", pink: "#E8869A",
   softPink: "#F2C4CE", sakura: "#FFB7C5", gold: "#C9A96E",
   white: "#FFFFFF", shadow: "rgba(74,55,40,0.12)", red: "#E53E3E",
+};
+
+const FILTERS = {
+  warm: "sepia(.16) saturate(1.18) contrast(1.03) brightness(1.03)",
+  vintage: "sepia(.34) saturate(.92) contrast(1.08) brightness(.98)",
+  grain: "contrast(1.14) saturate(.86) brightness(.97)",
+  none: "none",
 };
 
 // ============================================================
@@ -238,13 +247,47 @@ function placeToCoords(place) {
 
 function DiaryTravelMap({ posts = [], title = "Travel Map", onPostClick }) {
   const mapped = posts.filter(p => p.location || p.location_name || p.lat || p.lng).slice(0, 18);
-  const pinPosition = (post, i) => {
-    const coords = (post.lat || post.lng) ? { lat: Number(post.lat || 0), lng: Number(post.lng || 0) } : placeToCoords(post.location_name || post.location || `post-${i}`);
-    return {
-      left: `${Math.max(8, Math.min(92, ((coords.lng + 180) / 360) * 100))}%`,
-      top: `${Math.max(12, Math.min(88, (1 - ((coords.lat + 90) / 180)) * 100))}%`,
-    };
-  };
+  const mapRef = useRef(null);
+  const mapElRef = useRef(null);
+
+  useEffect(() => {
+    if (!mapElRef.current || mapRef.current) return;
+    const first = mapped[0];
+    const center = first ? placeToCoords(first.location_name || first.location || "Diary") : { lng: 78.9629, lat: 20.5937 };
+    mapRef.current = new maplibregl.Map({
+      container: mapElRef.current,
+      style: "https://demotiles.maplibre.org/style.json",
+      center: [Number(first?.lng ?? center.lng), Number(first?.lat ?? center.lat)],
+      zoom: first ? 3.2 : 1.6,
+      attributionControl: false,
+    });
+    mapRef.current.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+    return () => { mapRef.current?.remove(); mapRef.current = null; };
+  }, []);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const markers = mapped.map((post, i) => {
+      const fallback = placeToCoords(post.location_name || post.location || `post-${i}`);
+      const lng = Number(post.lng ?? fallback.lng);
+      const lat = Number(post.lat ?? fallback.lat);
+      const el = document.createElement("button");
+      el.type = "button";
+      el.textContent = "D";
+      el.style.cssText = `width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:${C.pink};color:white;border:2px solid white;font-weight:900;box-shadow:0 6px 16px rgba(74,55,40,.28);cursor:pointer;font-family:Georgia,serif;`;
+      el.addEventListener("click", () => onPostClick?.(post));
+      const marker = new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).setPopup(
+        new maplibregl.Popup({ offset: 22 }).setHTML(`<strong>${post.location_name || post.location || "Diary moment"}</strong><br/>${post.caption || ""}`)
+      ).addTo(mapRef.current);
+      return marker;
+    });
+    if (markers.length) {
+      const bounds = new maplibregl.LngLatBounds();
+      markers.forEach(marker => bounds.extend(marker.getLngLat()));
+      mapRef.current.fitBounds(bounds, { padding: 55, maxZoom: 8, duration: 600 });
+    }
+    return () => markers.forEach(marker => marker.remove());
+  }, [mapped, onPostClick]);
 
   return (
     <div className="ios-card" style={{ background: C.white, borderRadius: 24, padding: 14, marginBottom: 18, boxShadow: `0 12px 36px ${C.shadow}` }}>
@@ -255,22 +298,7 @@ function DiaryTravelMap({ posts = [], title = "Travel Map", onPostClick }) {
         </div>
         <span style={{ color: C.pink, fontWeight: 900 }}>Map</span>
       </div>
-      <div style={{ position: "relative", height: 210, borderRadius: 20, overflow: "hidden", background: `linear-gradient(145deg,#E8F1ED,#F9EFE7 55%,#E9EDF6)`, border: `1px solid ${C.beige}` }}>
-        <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(90deg,rgba(139,111,94,.12) 1px,transparent 1px),linear-gradient(rgba(139,111,94,.12) 1px,transparent 1px)", backgroundSize: "38px 38px", opacity: .45 }} />
-        <div style={{ position: "absolute", width: 190, height: 96, borderRadius: "50%", background: "rgba(139,111,94,.13)", left: -30, top: 36, transform: "rotate(-18deg)" }} />
-        <div style={{ position: "absolute", width: 160, height: 120, borderRadius: "48%", background: "rgba(232,134,154,.13)", right: -22, bottom: 24, transform: "rotate(14deg)" }} />
-        {mapped.map((post, i) => {
-          const pos = pinPosition(post, i);
-          return (
-            <button key={post.id || i} onClick={() => onPostClick?.(post)} title={post.location_name || post.location || "Diary pin"} style={{
-              position: "absolute", left: pos.left, top: pos.top, transform: "translate(-50%,-100%)",
-              width: 28, height: 28, borderRadius: "50% 50% 50% 0", rotate: "-45deg",
-              background: C.pink, border: `2px solid ${C.white}`, boxShadow: `0 6px 16px rgba(74,55,40,.22)`, cursor: "pointer",
-            }}>
-              <span style={{ display: "block", rotate: "45deg", color: C.white, fontWeight: 900, fontSize: 12 }}>D</span>
-            </button>
-          );
-        })}
+      <div ref={mapElRef} style={{ position: "relative", height: 240, borderRadius: 20, overflow: "hidden", background: `linear-gradient(145deg,#E8F1ED,#F9EFE7 55%,#E9EDF6)`, border: `1px solid ${C.beige}` }}>
         {mapped.length === 0 && (
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 24 }}>
             <p style={{ margin: 0, color: C.brown, fontFamily: "'Playfair Display',Georgia,serif", fontStyle: "italic" }}>No mapped moments yet. Every new post now needs a place.</p>
@@ -691,6 +719,8 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
   const [showComments, setShowComments] = useState(false);
   const [showActions, setShowActions] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [reportReason, setReportReason] = useState("Spam");
+  const [reportDescription, setReportDescription] = useState("");
   const [showFullDiary, setShowFullDiary] = useState(false);
   const [comment, setComment] = useState("");
   const [comments, setComments] = useState([]);
@@ -722,12 +752,35 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
     showToast("Post link copied!");
   };
 
-  const handleReport = async (reason) => {
+  const handleReport = async () => {
     if (!currentUser) { showToast("Sign in to report posts", "error"); return; }
-    await supabase.from("reports").insert({ post_id: post.id, reporter_id: currentUser.id, reported_user_id: post.user_id, reason });
+    const { data: existing } = await supabase.from("reports")
+      .select("id")
+      .eq("reporter_id", currentUser.id)
+      .eq("target_type", "post")
+      .eq("target_id", post.id)
+      .maybeSingle();
+    if (existing) { showToast("You already reported this post"); setShowReport(false); return; }
+    let { error } = await supabase.from("reports").insert({
+      reporter_id: currentUser.id,
+      target_type: "post",
+      target_id: post.id,
+      reason: reportReason,
+      description: reportDescription.trim() || null,
+      status: "pending",
+    });
+    if (error && /target_type|target_id|description|status/i.test(error.message || "")) {
+      const fallback = await supabase.from("reports").insert({ post_id: post.id, reporter_id: currentUser.id, reported_user_id: post.user_id, reason: reportReason });
+      error = fallback.error;
+    }
+    if (error) { showToast(error.message || "Could not submit report", "error"); return; }
+    const { count } = await supabase.from("reports").select("*", { count: "exact", head: true }).eq("target_type", "post").eq("target_id", post.id);
+    if ((count || 0) >= 5) await supabase.from("posts").update({ is_hidden: true, report_count: count }).eq("id", post.id);
+    else await supabase.from("posts").update({ report_count: count || 1 }).eq("id", post.id);
     setShowActions(false);
     setShowReport(false);
-    showToast("Report sent to Diary");
+    setReportDescription("");
+    showToast("Report submitted");
   };
 
   const handleDeleteComment = async (commentId) => {
@@ -798,7 +851,7 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
 
       {/* Image */}
       <div onDoubleClick={handleLike} style={{ width: "100%", aspectRatio: "4/3", overflow: "hidden", cursor: "pointer" }}>
-        <img src={post.image_url} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+        <img src={post.image_url} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", filter: FILTERS[post.filter_type || "none"] || "none" }} />
       </div>
 
       {/* Actions */}
@@ -869,10 +922,12 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.white, borderRadius: 18, padding: 18, maxWidth: 340, width: "100%", boxShadow: `0 10px 35px ${C.shadow}` }}>
             <h3 style={{ margin: "0 0 10px", color: C.dark, fontFamily: "'Playfair Display',Georgia,serif" }}>Report this post</h3>
-            {["Unappropriate content", "Sexual content", "Not Diary taste", "Unaesthetic"].map(reason => (
-              <button key={reason} onClick={() => handleReport(reason)} style={{ display: "block", width: "100%", textAlign: "left", padding: "11px 0", background: "none", border: "none", borderBottom: `1px solid ${C.beige}`, cursor: "pointer", color: C.dark }}>{reason}</button>
+            {["Spam", "Harassment", "Nudity", "Violence", "Other"].map(reason => (
+              <button key={reason} onClick={() => setReportReason(reason)} style={{ display: "block", width: "100%", textAlign: "left", padding: "11px 0", background: reportReason === reason ? C.beige : "none", border: "none", borderBottom: `1px solid ${C.beige}`, cursor: "pointer", color: C.dark, fontWeight: reportReason === reason ? 800 : 500 }}>{reason}</button>
             ))}
-            <Btn variant="secondary" onClick={() => setShowReport(false)} style={{ width: "100%", marginTop: 12 }}>Cancel</Btn>
+            <textarea value={reportDescription} onChange={e => setReportDescription(e.target.value)} placeholder="Optional context for Diary authority..." style={{ width: "100%", height: 78, boxSizing: "border-box", marginTop: 12, padding: 12, borderRadius: 14, border: `1px solid ${C.tan}`, fontFamily: "'Lato',sans-serif", resize: "none", outline: "none" }} />
+            <Btn variant="pink" onClick={handleReport} style={{ width: "100%", marginTop: 12 }}>Submit report</Btn>
+            <Btn variant="secondary" onClick={() => setShowReport(false)} style={{ width: "100%", marginTop: 8 }}>Cancel</Btn>
           </div>
         </div>
       )}
@@ -916,6 +971,7 @@ function HomePage({ currentUser, profile, setPage, showToast, onOpenProfile }) {
     setLoading(true);
     let query = supabase.from("posts")
       .select("*, profiles(username, avatar_url, full_name)")
+      .neq("is_hidden", true)
       .order("created_at", { ascending: false })
       .limit(20);
     if (category !== "all") query = query.eq("category", category);
@@ -924,6 +980,14 @@ function HomePage({ currentUser, profile, setPage, showToast, onOpenProfile }) {
     if (error && /season/i.test(error.message || "")) {
       let retry = supabase.from("posts").select("*, profiles(username, avatar_url, full_name)").order("created_at", { ascending: false }).limit(20);
       if (category !== "all") retry = retry.eq("category", category);
+      const fallback = await retry;
+      data = fallback.data;
+      error = fallback.error;
+    }
+    if (error && /is_hidden/i.test(error.message || "")) {
+      let retry = supabase.from("posts").select("*, profiles(username, avatar_url, full_name)").order("created_at", { ascending: false }).limit(20);
+      if (category !== "all") retry = retry.eq("category", category);
+      if (feedSeason !== "all") retry = retry.eq("season", feedSeason);
       const fallback = await retry;
       data = fallback.data;
       error = fallback.error;
@@ -1185,7 +1249,7 @@ function CreatePage({ currentUser, showToast, setPage }) {
 
       {/* Upload area */}
       <div onClick={() => fileRef.current.click()} style={{ width: "100%", aspectRatio: "1", background: C.beige, borderRadius: 20, border: `2px dashed ${C.tan}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", marginBottom: 18, overflow: "hidden" }}>
-        {preview ? <img src={preview} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (
+        {preview ? <img src={preview} style={{ width: "100%", height: "100%", objectFit: "cover", filter: FILTERS[filterType] || "none" }} /> : (
           <>
             <span style={{ fontSize: 46 }}>📷</span>
             <p style={{ fontFamily: "'Lato',sans-serif", color: C.brown, fontSize: 14, marginTop: 10 }}>Tap to upload your moment</p>
@@ -1779,6 +1843,81 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
 }
 
 // ============================================================
+// DIARY AUTHORITY REPORT QUEUE
+// ============================================================
+function AdminReportsPage({ setPage, showToast }) {
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchReports = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase.from("reports")
+      .select("*")
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (error) {
+      showToast("Diary Authority queue needs reports table/admin access", "error");
+      setReports([]);
+    } else {
+      setReports(data || []);
+    }
+    setLoading(false);
+  }, [showToast]);
+
+  useEffect(() => { fetchReports(); }, [fetchReports]);
+
+  const resolveReport = async (report, action) => {
+    const postId = report.target_id || report.post_id;
+    if (action === "delete_post" && postId) {
+      const { error: deleteError } = await supabase.from("posts").delete().eq("id", postId);
+      if (deleteError) {
+        showToast("Could not delete reported post", "error");
+        return;
+      }
+    }
+    const { error } = await supabase.from("reports").update({ status: "resolved" }).eq("id", report.id);
+    if (error) showToast("Could not resolve report", "error");
+    else {
+      setReports(prev => prev.filter(r => r.id !== report.id));
+      showToast(action === "delete_post" ? "Post deleted and report resolved" : "Report ignored");
+    }
+  };
+
+  return (
+    <div style={{ padding: "56px 16px 100px", background: C.cream, minHeight: "100vh" }}>
+      <PageHeader title="Diary Authority" subtitle="Review pending reports" onBack={() => setPage("settings")} />
+      <div style={{ background: C.beige, borderRadius: 18, padding: 14, marginBottom: 16 }}>
+        <p style={{ margin: 0, fontFamily: "'Lato',sans-serif", color: C.brown, fontSize: 13, lineHeight: 1.5 }}>
+          Reports stay private from regular users. Admin accounts can review, delete harmful posts, or ignore reports that do not break Diary taste.
+        </p>
+      </div>
+      {loading ? (
+        <p style={{ textAlign: "center", color: C.brown, fontFamily: "'Playfair Display',Georgia,serif", fontStyle: "italic" }}>Loading reports...</p>
+      ) : reports.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "44px 0" }}>
+          <p style={{ fontSize: 34, margin: 0 }}>✦</p>
+          <p style={{ fontFamily: "'Playfair Display',Georgia,serif", color: C.brown, fontStyle: "italic" }}>No pending reports</p>
+        </div>
+      ) : reports.map(report => (
+        <div key={report.id} style={{ background: C.white, borderRadius: 18, padding: 14, marginBottom: 12, boxShadow: `0 6px 20px ${C.shadow}`, border: `1px solid ${C.beige}` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+            <strong style={{ color: C.dark, fontFamily: "'Lato',sans-serif" }}>{report.reason || "Reported content"}</strong>
+            <span style={{ color: C.tan, fontSize: 11 }}>{new Date(report.created_at).toLocaleDateString()}</span>
+          </div>
+          <p style={{ margin: "0 0 8px", color: C.brown, fontSize: 12, lineHeight: 1.45 }}>Target: {report.target_type || "post"} · {report.target_id || report.post_id || "unknown"}</p>
+          {report.description && <p style={{ margin: "0 0 12px", color: C.dark, fontSize: 13, lineHeight: 1.5 }}>{report.description}</p>}
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn variant="secondary" onClick={() => resolveReport(report, "ignore")} style={{ flex: 1, padding: 10 }}>Ignore</Btn>
+            <Btn variant="pink" onClick={() => resolveReport(report, "delete_post")} style={{ flex: 1, padding: 10 }}>Delete Post</Btn>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ============================================================
 // SETTINGS PAGE
 // ============================================================
 function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onProfileUpdated }) {
@@ -1806,6 +1945,15 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
     showToast(`Account privacy set to ${next ? "private" : "public"}`);
   };
 
+  const handleChangePassword = async () => {
+    const password = prompt("Enter a new password for your Diary account");
+    if (!password) return;
+    if (password.length < 6) { showToast("Password must be at least 6 characters", "error"); return; }
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) showToast(error.message || "Could not change password", "error");
+    else showToast("Password updated");
+  };
+
   const handleDeleteAccount = async () => {
     if (!currentUser || !confirm("Delete your Diary account data? This removes your posts, comments, bookmarks and profile.")) return;
     await supabase.from("comments").delete().eq("user_id", currentUser.id);
@@ -1819,7 +1967,9 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
   const handleSetting = (label) => {
     if (label === "Edit Profile") setPage("profile");
     else if (label === "Delete Account") handleDeleteAccount();
+    else if (label === "Change Password") handleChangePassword();
     else if (label === "Account Privacy") togglePrivacy();
+    else if (label === "Diary Authority Queue") setPage("adminReports");
     else if (label === "Notifications") { setNotifications(v => !v); showToast(`Notifications ${notifications ? "off" : "on"}`); }
     else showToast(`${label} coming soon`);
   };
@@ -1851,6 +2001,18 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
           </div>
         </div>
       ))}
+      <div style={{ marginBottom: 22 }}>
+        <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 10, fontWeight: 700, color: C.tan, letterSpacing: "1px", textTransform: "uppercase", margin: "0 0 7px" }}>Diary Authority</p>
+        <div style={{ background: C.white, borderRadius: 16, overflow: "hidden", boxShadow: `0 4px 16px ${C.shadow}` }}>
+          <div onClick={() => setPage("adminReports")} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 16px", cursor: "pointer" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 900, color: C.pink }}>MOD</span>
+              <span style={{ fontFamily: "'Lato',sans-serif", fontSize: 14, color: C.dark }}>Diary Authority Queue</span>
+            </div>
+            <span style={{ color: C.tan }}>›</span>
+          </div>
+        </div>
+      </div>
       <Btn variant="secondary" onClick={onLogout} style={{ width: "100%", borderRadius: 16, padding: "13px", fontSize: 14 }}>Sign Out</Btn>
       <div style={{ textAlign: "center", marginTop: 30, color: C.tan, fontFamily: "'Lato',sans-serif", fontSize: 11, lineHeight: 1.8 }}>
         <p style={{ margin: 0 }}>© 2026 Diary Inc. All rights reserved.</p>
@@ -2243,6 +2405,7 @@ export default function DiaryApp() {
           {page === "profile" && <ProfilePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onLogout={handleLogout} onProfileUpdated={setProfile} />}
           {page === "publicProfile" && <PublicProfilePage profileId={viewProfileId} currentUser={currentUser} setPage={setPage} showToast={showToast} onMessageUser={setDmInitialUser} />}
           {page === "settings" && <SettingsPage onLogout={handleLogout} setPage={setPage} showToast={showToast} currentUser={currentUser} profile={profile} onProfileUpdated={setProfile} />}
+          {page === "adminReports" && <AdminReportsPage setPage={setPage} showToast={showToast} />}
           {page === "notifications" && <NotificationsPage currentUser={currentUser} setPage={setPage} />}
           {page === "dms" && <DMsPage2 currentUser={currentUser} setPage={setPage} showToast={showToast} initialUser={dmInitialUser} />}
           {showNav && <BottomNav page={page} setPage={setPage} />}
