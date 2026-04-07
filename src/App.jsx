@@ -41,7 +41,10 @@ function LovableVibeStyle() {
           radial-gradient(circle at 58px 58px, rgba(232,134,154,0.06) 0 4px, transparent 5px),
           #FAF7F2;
         background-size: 72px 72px;
+        -webkit-font-smoothing: antialiased;
+        overscroll-behavior-y: none;
       }
+      html { scroll-behavior: smooth; }
       button, input, textarea { -webkit-tap-highlight-color: transparent; }
       @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
       @keyframes softPop{0%{transform:scale(.96);opacity:.4}100%{transform:scale(1);opacity:1}}
@@ -51,6 +54,11 @@ function LovableVibeStyle() {
           linear-gradient(180deg, rgba(255,255,255,0.88), rgba(250,247,242,0.96));
         background-size: 64px 64px, auto;
       }
+      .ios-card {
+        transition: transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s ease, opacity .22s ease;
+        animation: softPop .22s ease both;
+      }
+      .ios-card:active { transform: scale(.985); }
     `}</style>
   );
 }
@@ -183,6 +191,91 @@ function PageHeader({ title, subtitle, onBack, right }) {
           {subtitle && <p style={{ margin: "3px 0 0", color: C.brown, fontSize: 12, fontStyle: "italic" }}>{subtitle}</p>}
         </div>
         {right}
+      </div>
+    </div>
+  );
+}
+
+function SakuraStorm({ onDone }) {
+  useEffect(() => { const t = setTimeout(onDone, 2100); return () => clearTimeout(t); }, [onDone]);
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 10000, pointerEvents: "none", overflow: "hidden", background: "rgba(250,247,242,0.18)" }}>
+      {Array.from({ length: 58 }).map((_, i) => (
+        <div key={i} style={{
+          position: "absolute",
+          left: `${Math.random() * 100}%`,
+          top: `-${20 + Math.random() * 140}px`,
+          width: 8 + Math.random() * 16,
+          height: 8 + Math.random() * 16,
+          borderRadius: "60% 0 60% 0",
+          background: `hsl(${335 + Math.random() * 22}, 80%, ${72 + Math.random() * 18}%)`,
+          opacity: 0.52 + Math.random() * 0.42,
+          transform: `rotate(${Math.random() * 180}deg)`,
+          animation: `stormFall ${1.4 + Math.random() * 0.9}s cubic-bezier(.2,.7,.4,1) ${Math.random() * .45}s forwards`,
+          filter: "drop-shadow(0 4px 8px rgba(232,134,154,.2))",
+        }} />
+      ))}
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ background: "rgba(255,255,255,.88)", borderRadius: 26, padding: "18px 24px", boxShadow: `0 18px 50px ${C.shadow}`, textAlign: "center" }}>
+          <DiaryLogo size={34} />
+          <p style={{ margin: "8px 0 0", fontFamily: "'Playfair Display',Georgia,serif", fontStyle: "italic", color: C.brown }}>Welcome back to your Diary</p>
+        </div>
+      </div>
+      <style>{`@keyframes stormFall{0%{transform:translate3d(0,-80px,0) rotate(0deg);opacity:0}15%{opacity:1}100%{transform:translate3d(${Math.random() > .5 ? "" : "-"}46vw,115vh,0) rotate(560deg);opacity:0}}`}</style>
+    </div>
+  );
+}
+
+function placeToCoords(place) {
+  const text = (place || "Diary").toLowerCase();
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+  return {
+    lat: Number((((hash % 14000) / 100) - 70).toFixed(6)),
+    lng: Number(((((hash / 14000) % 36000) / 100) - 180).toFixed(6)),
+  };
+}
+
+function DiaryTravelMap({ posts = [], title = "Travel Map", onPostClick }) {
+  const mapped = posts.filter(p => p.location || p.location_name || p.lat || p.lng).slice(0, 18);
+  const pinPosition = (post, i) => {
+    const coords = (post.lat || post.lng) ? { lat: Number(post.lat || 0), lng: Number(post.lng || 0) } : placeToCoords(post.location_name || post.location || `post-${i}`);
+    return {
+      left: `${Math.max(8, Math.min(92, ((coords.lng + 180) / 360) * 100))}%`,
+      top: `${Math.max(12, Math.min(88, (1 - ((coords.lat + 90) / 180)) * 100))}%`,
+    };
+  };
+
+  return (
+    <div className="ios-card" style={{ background: C.white, borderRadius: 24, padding: 14, marginBottom: 18, boxShadow: `0 12px 36px ${C.shadow}` }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div>
+          <h3 style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, fontSize: 20 }}>{title}</h3>
+          <p style={{ margin: "2px 0 0", fontSize: 12, color: C.brown }}>Pins show where Diary moments happened</p>
+        </div>
+        <span style={{ color: C.pink, fontWeight: 900 }}>Map</span>
+      </div>
+      <div style={{ position: "relative", height: 210, borderRadius: 20, overflow: "hidden", background: `linear-gradient(145deg,#E8F1ED,#F9EFE7 55%,#E9EDF6)`, border: `1px solid ${C.beige}` }}>
+        <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(90deg,rgba(139,111,94,.12) 1px,transparent 1px),linear-gradient(rgba(139,111,94,.12) 1px,transparent 1px)", backgroundSize: "38px 38px", opacity: .45 }} />
+        <div style={{ position: "absolute", width: 190, height: 96, borderRadius: "50%", background: "rgba(139,111,94,.13)", left: -30, top: 36, transform: "rotate(-18deg)" }} />
+        <div style={{ position: "absolute", width: 160, height: 120, borderRadius: "48%", background: "rgba(232,134,154,.13)", right: -22, bottom: 24, transform: "rotate(14deg)" }} />
+        {mapped.map((post, i) => {
+          const pos = pinPosition(post, i);
+          return (
+            <button key={post.id || i} onClick={() => onPostClick?.(post)} title={post.location_name || post.location || "Diary pin"} style={{
+              position: "absolute", left: pos.left, top: pos.top, transform: "translate(-50%,-100%)",
+              width: 28, height: 28, borderRadius: "50% 50% 50% 0", rotate: "-45deg",
+              background: C.pink, border: `2px solid ${C.white}`, boxShadow: `0 6px 16px rgba(74,55,40,.22)`, cursor: "pointer",
+            }}>
+              <span style={{ display: "block", rotate: "45deg", color: C.white, fontWeight: 900, fontSize: 12 }}>D</span>
+            </button>
+          );
+        })}
+        {mapped.length === 0 && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 24 }}>
+            <p style={{ margin: 0, color: C.brown, fontFamily: "'Playfair Display',Georgia,serif", fontStyle: "italic" }}>No mapped moments yet. Every new post now needs a place.</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -815,6 +908,7 @@ function HomePage({ currentUser, profile, setPage, showToast, onOpenProfile }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState("all");
+  const [feedSeason, setFeedSeason] = useState("all");
   const [showFilter, setShowFilter] = useState(false);
   const heading = HEADINGS[category] || HEADINGS.all;
 
@@ -825,7 +919,15 @@ function HomePage({ currentUser, profile, setPage, showToast, onOpenProfile }) {
       .order("created_at", { ascending: false })
       .limit(20);
     if (category !== "all") query = query.eq("category", category);
-    const { data, error } = await query;
+    if (feedSeason !== "all") query = query.eq("season", feedSeason);
+    let { data, error } = await query;
+    if (error && /season/i.test(error.message || "")) {
+      let retry = supabase.from("posts").select("*, profiles(username, avatar_url, full_name)").order("created_at", { ascending: false }).limit(20);
+      if (category !== "all") retry = retry.eq("category", category);
+      const fallback = await retry;
+      data = fallback.data;
+      error = fallback.error;
+    }
     if (error) { showToast("Failed to load posts", "error"); setLoading(false); return; }
 
     // Fetch likes and bookmarks for current user
@@ -845,7 +947,7 @@ function HomePage({ currentUser, profile, setPage, showToast, onOpenProfile }) {
       setPosts(data || []);
     }
     setLoading(false);
-  }, [category, currentUser]);
+  }, [category, feedSeason, currentUser]);
 
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
 
@@ -928,6 +1030,19 @@ function HomePage({ currentUser, profile, setPage, showToast, onOpenProfile }) {
           </div>
         </div>
 
+        {posts[0] && (
+          <div className="ios-card" style={{ background: C.white, borderRadius: 22, padding: 14, marginBottom: 18, boxShadow: `0 10px 30px ${C.shadow}` }}>
+            <p style={{ margin: "0 0 8px", color: C.pink, fontWeight: 900, fontSize: 11, letterSpacing: 1, textTransform: "uppercase" }}>Today's Moment</p>
+            <div style={{ display: "grid", gridTemplateColumns: "90px 1fr", gap: 12, alignItems: "center" }}>
+              <img src={posts[0].image_url} style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 18 }} />
+              <div>
+                <h3 style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark }}>A Diary worth opening</h3>
+                <p style={{ margin: "5px 0 0", color: C.brown, fontSize: 12, lineHeight: 1.45 }}>{posts[0].location || "Somewhere beautiful"} · {posts[0].caption || "A real moment from the feed"}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Feed header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
           <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 19, color: C.dark, margin: 0 }}>Countryside Stories</h2>
@@ -942,6 +1057,13 @@ function HomePage({ currentUser, profile, setPage, showToast, onOpenProfile }) {
               <button key={c} onClick={() => { setCategory(c); setShowFilter(false); }}
                 style={{ display: "block", width: "100%", textAlign: "left", background: category === c ? C.beige : "none", border: "none", padding: "10px 16px", fontFamily: "'Lato',sans-serif", fontSize: 14, color: category === c ? C.pink : C.dark, cursor: "pointer", fontWeight: category === c ? 700 : 400 }}>
                 {c.charAt(0).toUpperCase() + c.slice(1)}
+              </button>
+            ))}
+            <p style={{ fontFamily: "'Lato',sans-serif", fontWeight: 700, fontSize: 10, color: C.tan, padding: "10px 16px 2px", margin: 0, letterSpacing: "1px", textTransform: "uppercase" }}>Season</p>
+            {["all", "spring", "summer", "autumn", "winter"].map(s => (
+              <button key={s} onClick={() => { setFeedSeason(s); setShowFilter(false); }}
+                style={{ display: "block", width: "100%", textAlign: "left", background: feedSeason === s ? C.beige : "none", border: "none", padding: "10px 16px", fontFamily: "'Lato',sans-serif", fontSize: 14, color: feedSeason === s ? C.pink : C.dark, cursor: "pointer", fontWeight: feedSeason === s ? 700 : 400 }}>
+                {s.charAt(0).toUpperCase() + s.slice(1)}
               </button>
             ))}
           </div>
@@ -987,6 +1109,8 @@ function CreatePage({ currentUser, showToast, setPage }) {
   const [caption, setCaption] = useState("");
   const [location, setLocation] = useState("");
   const [category, setCategory] = useState("rural");
+  const [season, setSeason] = useState("spring");
+  const [filterType, setFilterType] = useState("warm");
   const [imageFile, setImageFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -1009,6 +1133,7 @@ function CreatePage({ currentUser, showToast, setPage }) {
 
   const handlePost = async () => {
     if (!imageFile || !currentUser) return;
+    if (!location.trim()) { showToast("Location is required for every Diary post", "error"); return; }
     setLoading(true);
     try {
       // Upload image
@@ -1018,19 +1143,32 @@ function CreatePage({ currentUser, showToast, setPage }) {
       if (uploadErr) throw uploadErr;
 
       const { data: urlData } = supabase.storage.from("diary-media").getPublicUrl(path);
+      const coords = placeToCoords(location.trim());
 
-      // Insert post
-      const { error: postErr } = await supabase.from("posts").insert({
+      // Insert post with Travel Map fields when the Supabase schema supports them.
+      const postPayload = {
         user_id: currentUser.id,
         image_url: urlData.publicUrl,
         caption: caption.trim(),
         location: location.trim(),
+        location_name: location.trim(),
+        lat: coords.lat,
+        lng: coords.lng,
         category,
-      });
+        season,
+        filter_type: filterType,
+      };
+      let { error: postErr } = await supabase.from("posts").insert(postPayload);
+      if (postErr && /location_name|lat|lng|season|filter_type/i.test(postErr.message || "")) {
+        const fallback = { user_id: currentUser.id, image_url: urlData.publicUrl, caption: caption.trim(), location: location.trim(), category };
+        const retry = await supabase.from("posts").insert(fallback);
+        postErr = retry.error;
+        if (!postErr) showToast("Moment shared. Add map/season columns in Supabase for full Travel Map storage.");
+      }
       if (postErr) throw postErr;
 
       showToast("Moment shared! 🌸");
-      setCaption(""); setLocation(""); setImageFile(null); setPreview(null);
+      setCaption(""); setLocation(""); setImageFile(null); setPreview(null); setSeason("spring"); setFilterType("warm");
       setPage("home");
     } catch (err) {
       showToast(err.message || "Failed to post", "error");
@@ -1060,6 +1198,8 @@ function CreatePage({ currentUser, showToast, setPage }) {
       <Input placeholder="Write your moment... what does this place feel like?" value={caption} onChange={e => setCaption(e.target.value)} multiline style={{ marginBottom: 13 }} />
       <Input placeholder="📍 Add location" value={location} onChange={e => setLocation(e.target.value)} style={{ marginBottom: 13 }} />
 
+      <p style={{ margin: "-5px 0 13px", color: C.brown, fontSize: 11, fontFamily: "'Lato',sans-serif" }}>Location is required for every Diary moment and powers your Travel Map.</p>
+
       {/* Category */}
       <div style={{ marginBottom: 20 }}>
         <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 11, color: C.brown, marginBottom: 8, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase" }}>Vibe</p>
@@ -1072,7 +1212,29 @@ function CreatePage({ currentUser, showToast, setPage }) {
         </div>
       </div>
 
-      <Btn variant="pink" onClick={handlePost} loading={loading} disabled={!imageFile || !currentUser} style={{ width: "100%", fontSize: 15, padding: "15px", borderRadius: 16 }}>
+      <div style={{ marginBottom: 20 }}>
+        <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 11, color: C.brown, marginBottom: 8, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase" }}>Season</p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {["spring", "summer", "autumn", "winter"].map(s => (
+            <button key={s} onClick={() => setSeason(s)} style={{ background: season === s ? C.dark : C.white, color: season === s ? C.cream : C.dark, border: `1.5px solid ${season === s ? C.dark : C.tan}`, borderRadius: 20, padding: "7px 14px", fontFamily: "'Lato',sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 11, color: C.brown, marginBottom: 8, fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase" }}>Film roll filter</p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+          {["warm", "vintage", "grain"].map(f => (
+            <button key={f} onClick={() => setFilterType(f)} style={{ background: filterType === f ? C.pink : C.white, color: filterType === f ? C.white : C.dark, border: `1.5px solid ${filterType === f ? C.pink : C.tan}`, borderRadius: 14, padding: "10px 8px", fontFamily: "'Lato',sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              {f.charAt(0).toUpperCase() + f.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <Btn variant="pink" onClick={handlePost} loading={loading} disabled={!imageFile || !currentUser || !location.trim()} style={{ width: "100%", fontSize: 15, padding: "15px", borderRadius: 16 }}>
         Share your Moment ✦
       </Btn>
       {!currentUser && <p style={{ textAlign: "center", color: C.brown, fontSize: 12, fontFamily: "'Lato',sans-serif", marginTop: 10 }}>Sign in to share moments</p>}
@@ -1378,12 +1540,12 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
     <div style={{ background: C.cream, minHeight: "100vh", paddingBottom: 100 }}>
       {showAvatarCropper && <ImageCropper image={avatarCropImage} shape="circle" onCrop={handleAvatarCropped} onCancel={() => setShowAvatarCropper(false)} />}
       {/* Cover */}
-      <div style={{ height: 155, position: "relative", overflow: "hidden" }}>
+      <div style={{ height: 198, position: "relative", overflow: "hidden", borderRadius: "0 0 34px 34px", boxShadow: `0 12px 30px ${C.shadow}` }}>
         <img
           src={coverPreview || profileData?.cover_url || "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=800&q=80"}
           style={{ width: "100%", height: "100%", objectFit: "cover" }}
         />
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom,transparent,#FAF7F266)" }} />
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom,rgba(74,55,40,.04),rgba(250,247,242,.62))" }} />
         {editMode && (
           <button onClick={() => coverRef.current.click()} style={{ position: "absolute", bottom: 10, right: 10, background: "rgba(255,255,255,0.9)", border: "none", borderRadius: 20, padding: "6px 12px", fontFamily: "'Lato',sans-serif", fontSize: 11, cursor: "pointer" }}>
             📷 Change Cover
@@ -1395,8 +1557,8 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
       </div>
 
       <div style={{ padding: "0 16px" }}>
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginTop: -34, marginBottom: 10 }}>
-          <div style={{ width: 78, height: 78, borderRadius: "50%", border: `3px solid ${C.cream}`, overflow: "hidden", boxShadow: `0 4px 16px ${C.shadow}`, position: "relative", background: C.beige }}>
+        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginTop: -44, marginBottom: 12, position: "relative", zIndex: 2 }}>
+          <div style={{ width: 88, height: 88, borderRadius: "50%", border: `4px solid ${C.cream}`, overflow: "hidden", boxShadow: `0 8px 24px ${C.shadow}`, position: "relative", background: C.beige, flexShrink: 0 }}>
             <img src={avatarSrc} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             {editMode && (
               <button onClick={() => avatarRef.current.click()} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.45)", color: C.white, border: "none", fontFamily: "'Lato',sans-serif", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
@@ -1439,6 +1601,8 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
             </div>
           ))}
         </div>
+
+        <DiaryTravelMap posts={posts} title="Your Travel Map" onPostClick={(post) => showToast(`${post.location_name || post.location || "Diary"} moment`)} />
 
         {/* Tabs */}
         <div style={{ display: "flex", borderBottom: `2px solid ${C.beige}`, marginBottom: 14 }}>
@@ -1584,6 +1748,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
           </div>
         ) : (
           <>
+            <DiaryTravelMap posts={posts} title={`${profile.full_name || profile.username || "Diary"}'s Travel Map`} onPostClick={(post) => showToast(`${post.location_name || post.location || "Diary"} moment`)} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
               {["posts", "journeys"].map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)} style={{ background: activeTab === tab ? C.dark : C.white, color: activeTab === tab ? C.cream : C.brown, border: `1px solid ${C.beige}`, borderRadius: 14, padding: "11px 10px", cursor: "pointer", fontWeight: 800, textTransform: "capitalize", boxShadow: `0 4px 14px ${C.shadow}` }}>{tab}</button>
@@ -1995,6 +2160,7 @@ export default function DiaryApp() {
   const [profile, setProfile] = useState(null);
   const [viewProfileId, setViewProfileId] = useState(null);
   const [dmInitialUser, setDmInitialUser] = useState(null);
+  const [showSignInStorm, setShowSignInStorm] = useState(false);
   const [toast, setToast] = useState({ msg: "", type: "success" });
 
   const showToast = (msg, type = "success") => {
@@ -2062,10 +2228,11 @@ export default function DiaryApp() {
       <LovableVibeStyle />
 
       <Toast msg={toast.msg} type={toast.type} />
+      {showSignInStorm && <SakuraStorm onDone={() => setShowSignInStorm(false)} />}
 
       {screen === "landing" && <LandingPage onSignup={() => setScreen("signup")} onLogin={() => setScreen("login")} />}
       {screen === "signup" && <SignupPage onBack={() => setScreen("landing")} onSuccess={user => { setCurrentUser(user); setScreen("app"); setPage("home"); }} showToast={showToast} />}
-      {screen === "login" && <LoginPage onBack={() => setScreen("landing")} onSuccess={user => { setCurrentUser(user); setScreen("app"); setPage("home"); }} showToast={showToast} />}
+      {screen === "login" && <LoginPage onBack={() => setScreen("landing")} onSuccess={user => { setCurrentUser(user); setScreen("app"); setPage("home"); setShowSignInStorm(true); }} showToast={showToast} />}
 
       {screen === "app" && (
         <>
