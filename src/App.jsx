@@ -1165,8 +1165,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
       setAvatarPreview(null);
       setCoverPreview(null);
       setEditMode(false);
-      if (false) {}
-    else showToast("Profile updated! 🌸");
+      showToast("Profile updated!");
     } catch (err) {
       showToast(err.message || "Failed to save", "error");
     } finally {
