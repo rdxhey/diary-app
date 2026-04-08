@@ -222,7 +222,7 @@ function Toast({ msg, type = "success" }) {
 function PageHeader({ title, subtitle, onBack, right }) {
   return (
     <div style={{
-      position: "sticky", top: 0, zIndex: 60, background: "rgba(250,247,242,0.92)",
+      position: "sticky", top: 0, zIndex: 60, background: C.white,
       backdropFilter: "blur(14px)", borderBottom: `1px solid ${C.beige}`,
       padding: "14px 16px", boxShadow: `0 8px 24px rgba(74,55,40,0.04)`,
     }}>
@@ -469,6 +469,37 @@ function LandingPage({ onSignup, onLogin }) {
         <p style={{ color: C.tan, fontSize: 11, marginTop: 18, textAlign: "center" }}>By continuing you agree to Diary's Terms & Privacy Policy</p>
       </div>
     </div>
+  );
+}
+
+function WebsiteBadge({ url, label = "Website" }) {
+  if (!url) return null;
+  const href = /^https?:\/\//.test(url) ? url : `https://${url}`;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={label}
+      title={href}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 34,
+        height: 34,
+        borderRadius: "50%",
+        background: C.white,
+        color: C.pink,
+        textDecoration: "none",
+        border: `1px solid ${C.beige}`,
+        boxShadow: `0 4px 14px ${C.shadow}`,
+        fontSize: 16,
+        verticalAlign: "middle",
+      }}
+    >
+      🔗
+    </a>
   );
 }
 
@@ -2479,7 +2510,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
             {profileData?.bio && <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 13, color: C.dark, margin: "0 0 4px", lineHeight: 1.5 }}>{profileData.bio}</p>}
             {profile?.location && <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 14px" }}>📍 Currently in: {profile.location}</p>}
             {!profile?.location && profileData?.location && <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 14px" }}>Currently in: {profileData.location}</p>}
-            {profileData?.website && <a href={/^https?:\/\//.test(profileData.website) ? profileData.website : `https://${profileData.website}`} target="_blank" rel="noreferrer" style={{ display: "inline-block", margin: "0 0 14px", color: C.pink, textDecoration: "none", fontWeight: 700 }}>🔗 {profileData.website}</a>}
+            {profileData?.website && <div style={{ margin: "0 0 14px" }}><WebsiteBadge url={profileData.website} label="Open personal website" /></div>}
           </>
         )}
 
@@ -2670,7 +2701,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
         <p style={{ margin: "0 0 8px", color: C.brown, fontFamily: "'Lato',sans-serif" }}>{displayHandle(profile.username)}</p>
         {profile.bio && <p style={{ color: C.dark, fontSize: 13, lineHeight: 1.55, marginBottom: 8 }}>{profile.bio}</p>}
         {profile.location && <p style={{ color: C.brown, fontSize: 12, marginBottom: 8 }}>Currently in: {profile.location}</p>}
-        {profile.website && <a href={/^https?:\/\//.test(profile.website) ? profile.website : `https://${profile.website}`} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginBottom: 10, color: C.pink, textDecoration: "none", fontWeight: 700 }}>🔗 {profile.website}</a>}
+        {profile.website && <div style={{ marginBottom: 10 }}><WebsiteBadge url={profile.website} label="Open personal website" /></div>}
         {currentUser?.id !== profileId && <button onClick={handleBlock} style={{ border: "none", background: "none", color: C.red, cursor: "pointer", padding: 0, marginBottom: 16 }}>Block user</button>}
         <div style={{ display: "flex", justifyContent: "space-around", background: C.white, borderRadius: 18, padding: "14px 10px", margin: "8px 0 18px", boxShadow: `0 8px 24px ${C.shadow}` }}>
           {[["Posts", posts.length], ["Journeys", journeys.length], ["Followers", stats.followers], ["Following", stats.following]].map(([label, value]) => (
@@ -3042,7 +3073,7 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
       {sectionTitle("Help & Support")}
       <div style={cardStyle}>
         <a href="mailto:support@diary.com?subject=Diary%20Support" style={{ display: "block", color: C.pink, textDecoration: "none", fontWeight: 800, marginBottom: 8 }}>Email support</a>
-        <button onClick={() => showToast("The FAQ is being polished — we’ll notify you soon.")} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", color: C.dark, fontWeight: 700 }}>Open FAQ</button>
+        <button onClick={() => { window.location.href = `${window.location.origin}/diary-faq.html`; }} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", color: C.dark, fontWeight: 700 }}>Open FAQ</button>
       </div>
 
       {sectionTitle("Diary Authority")}
@@ -3302,7 +3333,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
   return (
     <div style={{ background: "transparent", minHeight: "100vh", paddingBottom: active ? 0 : 100 }}>
       {active ? (
-        <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+        <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: C.cream }}>
           <PageHeader
             title={
               <button onClick={() => onOpenProfile?.(active.id)} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", textAlign: "left", color: C.dark, fontFamily: "'Playfair Display',Georgia,serif", fontSize: 24, lineHeight: 1.1 }}>
@@ -3313,7 +3344,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
             onBack={() => setActive(null)}
             right={<button onClick={() => onOpenProfile?.(active.id)} style={{ border: "none", background: "none", padding: 0, cursor: "pointer" }}><Avatar src={active.avatar_url} size={38} active /></button>}
           />
-          <div style={{ flex: 1, padding: "16px 14px 90px", overflowY: "auto", background: "linear-gradient(180deg,#FAF7F2,#FFF)" }}>
+          <div style={{ flex: 1, padding: "16px 14px 90px", overflowY: "auto", background: `linear-gradient(180deg, ${C.cream}, ${C.white})` }}>
             {messages.length === 0 && (
               <div style={{ textAlign: "center", padding: "50px 20px", color: C.brown }}>
                 <div style={{ display: "flex", justifyContent: "center" }}><Avatar src={active.avatar_url} size={72} active /></div>
@@ -3333,8 +3364,8 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
               </div>
             ))}
           </div>
-          <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, padding: "10px 12px 14px", background: "rgba(255,255,255,0.94)", borderTop: `1px solid ${C.beige}`, display: "flex", gap: 8, boxSizing: "border-box" }}>
-            <input value={newMsg} onChange={e => setNewMsg(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMsg()} placeholder="Message..." style={{ flex: 1, padding: "13px 16px", border: `1.5px solid ${C.tan}`, borderRadius: 999, fontFamily: "'Lato',sans-serif", fontSize: 14, outline: "none", background: C.white }} />
+          <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, padding: "10px 12px 14px", background: C.white, borderTop: `1px solid ${C.beige}`, display: "flex", gap: 8, boxSizing: "border-box", boxShadow: `0 -8px 22px ${C.shadow}` }}>
+            <input value={newMsg} onChange={e => setNewMsg(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMsg()} placeholder="Message..." style={{ flex: 1, padding: "13px 16px", border: `1.5px solid ${C.tan}`, borderRadius: 999, fontFamily: "'Lato',sans-serif", fontSize: 14, outline: "none", background: C.cream, color: C.dark }} />
             <button onClick={sendMsg} style={{ background: C.pink, border: "none", borderRadius: 999, minWidth: 56, color: C.white, cursor: "pointer", fontSize: 13, fontWeight: 800 }}>Send</button>
           </div>
         </div>
