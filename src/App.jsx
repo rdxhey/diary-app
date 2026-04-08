@@ -34,6 +34,38 @@ const displayHandle = (username, fallback = "user") => {
   return `@${clean || fallback}`;
 };
 
+const getReadableTone = (r, g, b) => ((r * 299 + g * 587 + b * 114) / 1000) > 150 ? "light" : "dark";
+
+const analyzeImagePalette = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      canvas.width = 24;
+      canvas.height = 24;
+      ctx.drawImage(img, 0, 0, 24, 24);
+      const { data } = ctx.getImageData(0, 0, 24, 24);
+      let r = 0, g = 0, b = 0, count = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        r += data[i];
+        g += data[i + 1];
+        b += data[i + 2];
+        count++;
+      }
+      r = Math.round(r / count);
+      g = Math.round(g / count);
+      b = Math.round(b / count);
+      resolve({ r, g, b, tone: getReadableTone(r, g, b), image: reader.result });
+    };
+    img.onerror = reject;
+    img.src = reader.result;
+  };
+  reader.onerror = reject;
+  reader.readAsDataURL(file);
+});
+
 // ============================================================
 // FONT LOADER
 // ============================================================
@@ -279,8 +311,8 @@ function DiaryTravelMap({ posts = [], title = "Travel Map", onPostClick }) {
       const lat = Number(post.lat ?? fallback.lat);
       const el = document.createElement("button");
       el.type = "button";
-      el.textContent = "D";
-      el.style.cssText = `width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:${C.pink};color:white;border:2px solid white;font-weight:900;box-shadow:0 6px 16px rgba(74,55,40,.28);cursor:pointer;font-family:Georgia,serif;`;
+      el.textContent = "🚩 Diary";
+      el.style.cssText = `padding:8px 10px;border-radius:999px;background:${C.pink};color:white;border:2px solid white;font-weight:900;box-shadow:0 6px 16px rgba(74,55,40,.28);cursor:pointer;font-family:Lato,sans-serif;font-size:11px;white-space:nowrap;`;
       el.addEventListener("click", () => onPostClick?.(post));
       const marker = new maplibregl.Marker({ element: el }).setLngLat([lng, lat]).setPopup(
         new maplibregl.Popup({ offset: 22 }).setHTML(`<strong>${post.location_name || post.location || "Diary moment"}</strong><br/>${post.caption || ""}`)
@@ -395,6 +427,37 @@ function LandingPage({ onSignup, onLogin }) {
         <p style={{ color: C.tan, fontSize: 11, marginTop: 18, textAlign: "center" }}>By continuing you agree to Diary's Terms & Privacy Policy</p>
       </div>
     </div>
+  );
+}
+
+function BottomNav2({ page, setPage }) {
+  const tabs = [
+    { id: "home", icon: "🏠", label: "Home" },
+    { id: "quotes", icon: "📖", label: "Quotes" },
+    { id: "discover", icon: "🔍", label: "Discover" },
+    { id: "create", icon: "✚", label: "Create" },
+    { id: "memories", icon: "🔖", label: "Memories" },
+    { id: "profile", icon: "👤", label: "Profile" },
+  ];
+  return (
+    <nav style={{
+      position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
+      width: "100%", maxWidth: 480, background: C.white,
+      borderTop: `1px solid ${C.beige}`, display: "flex",
+      justifyContent: "space-around", alignItems: "center",
+      padding: "10px 0 20px", zIndex: 100,
+      boxShadow: `0 -4px 20px ${C.shadow}`,
+    }}>
+      {tabs.map(t => (
+        <button key={t.id} onClick={() => setPage(t.id)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "4px 4px", minWidth: 54 }}>
+          {t.id === "create"
+            ? <div style={{ width: 44, height: 44, borderRadius: 14, background: `linear-gradient(135deg,${C.pink},${C.dark})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, color: C.white, marginTop: -16, boxShadow: `0 4px 16px ${C.shadow}` }}>✚</div>
+            : <span style={{ fontSize: 19 }}>{t.icon}</span>
+          }
+          {t.id !== "create" && <span style={{ fontSize: 9, fontFamily: "'Lato',sans-serif", fontWeight: 700, color: page === t.id ? C.pink : C.tan, letterSpacing: "0.3px" }}>{t.label}</span>}
+        </button>
+      ))}
+    </nav>
   );
 }
 
@@ -965,7 +1028,7 @@ const HEADINGS = {
   cultural: { title: "Cultural Diaries", sub: "Stories woven into history" },
 };
 
-function HomePage({ currentUser, profile, setPage, showToast, onOpenProfile }) {
+function HomePage({ currentUser, profile, setPage, showToast, onOpenProfile, onOpenPost }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState("all");
@@ -1101,7 +1164,7 @@ function HomePage({ currentUser, profile, setPage, showToast, onOpenProfile }) {
         </div>
 
         {posts[0] && (
-          <div className="ios-card" style={{ background: C.white, borderRadius: 22, padding: 14, marginBottom: 18, boxShadow: `0 10px 30px ${C.shadow}` }}>
+          <div onClick={() => onOpenPost?.(posts[0])} className="ios-card" style={{ background: C.white, borderRadius: 22, padding: 14, marginBottom: 18, boxShadow: `0 10px 30px ${C.shadow}`, cursor: "pointer" }}>
             <p style={{ margin: "0 0 8px", color: C.pink, fontWeight: 900, fontSize: 11, letterSpacing: 1, textTransform: "uppercase" }}>Today's Moment</p>
             <div style={{ display: "grid", gridTemplateColumns: "90px 1fr", gap: 12, alignItems: "center" }}>
               <img src={posts[0].image_url} style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 18 }} />
@@ -1172,10 +1235,57 @@ function HomePage({ currentUser, profile, setPage, showToast, onOpenProfile }) {
   );
 }
 
+function PostViewerPage({ post, setPage, showToast }) {
+  if (!post) return null;
+  return (
+    <div style={{ minHeight: "100vh", background: C.cream, paddingBottom: 30 }}>
+      <PageHeader title="View full Diary" subtitle={post.location_name || post.location || displayHandle(post.profiles?.username, "diary")} onBack={() => setPage("home")} />
+      <div style={{ padding: 16 }}>
+        <div style={{ background: C.white, borderRadius: 24, overflow: "hidden", boxShadow: `0 12px 36px ${C.shadow}` }}>
+          {post.image_url && <img src={post.image_url} style={{ width: "100%", maxHeight: "58vh", objectFit: "cover", display: "block", filter: FILTERS[post.filter_type || "none"] || "none" }} />}
+          <div style={{ padding: 16 }}>
+            <p style={{ margin: "0 0 8px", fontWeight: 800, color: C.dark }}>{displayHandle(post.profiles?.username || post.username || "diary")}</p>
+            <p style={{ margin: "0 0 10px", color: C.dark, fontSize: 14, lineHeight: 1.6 }}>{post.caption || "A Diary moment."}</p>
+            {post.location && <p style={{ margin: "0 0 12px", color: C.brown, fontSize: 12 }}>📍 {post.location}</p>}
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/?post=${post.id}`).then(() => showToast("Post link copied!"))} style={{ border: `1px solid ${C.beige}`, borderRadius: 999, background: C.white, padding: "9px 14px", cursor: "pointer" }}>🔄 Share</button>
+              <button onClick={() => setPage("home")} style={{ border: `1px solid ${C.beige}`, borderRadius: 999, background: C.white, padding: "9px 14px", cursor: "pointer" }}>❌ Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuoteCard({ post, showToast, onOpenProfile, onOpenPost }) {
+  return (
+    <div style={{ background: C.white, borderRadius: 22, padding: 16, boxShadow: `0 10px 28px ${C.shadow}`, border: `1px solid ${C.beige}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+        <Avatar src={post.profiles?.avatar_url} size={42} active onClick={() => onOpenProfile?.(post.user_id)} />
+        <div style={{ flex: 1 }}>
+          <p style={{ margin: 0, color: C.dark, fontWeight: 800 }}>{displayHandle(post.profiles?.username)}</p>
+          <p style={{ margin: "2px 0 0", fontSize: 11, color: C.brown }}>{new Date(post.created_at || Date.now()).toLocaleDateString()}</p>
+        </div>
+      </div>
+      <div onClick={() => onOpenPost?.(post)} style={{ cursor: "pointer" }}>
+        <p style={{ margin: "0 0 12px", fontFamily: "'Playfair Display',Georgia,serif", fontSize: 22, lineHeight: 1.45, color: C.dark }}>{post.caption}</p>
+        {post.image_url && <img src={post.image_url} style={{ width: "100%", aspectRatio: "4/3", objectFit: "cover", borderRadius: 18, marginBottom: 12, filter: FILTERS[post.filter_type || "none"] || "none" }} />}
+      </div>
+      <div style={{ display: "flex", gap: 10 }}>
+        <button onClick={() => showToast("Diary liked it")} style={{ border: "none", background: "none", cursor: "pointer", color: C.dark }}>❤️</button>
+        <button onClick={() => onOpenPost?.(post)} style={{ border: "none", background: "none", cursor: "pointer", color: C.dark }}>💬</button>
+        <button onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/?post=${post.id}`).then(() => showToast("Quote link copied!"))} style={{ border: "none", background: "none", cursor: "pointer", color: C.dark }}>🔄</button>
+      </div>
+    </div>
+  );
+}
+
 // ============================================================
 // CREATE POST — REAL IMAGE UPLOAD TO SUPABASE
 // ============================================================
 function CreatePage({ currentUser, showToast, setPage }) {
+  const [postMode, setPostMode] = useState("image");
   const [caption, setCaption] = useState("");
   const [location, setLocation] = useState("");
   const [category, setCategory] = useState("rural");
@@ -1228,45 +1338,49 @@ function CreatePage({ currentUser, showToast, setPage }) {
   });
 
   const handlePost = async () => {
-    if (!imageFile || !currentUser) return;
-    if (!location.trim()) { showToast("Location is required for every Diary post", "error"); return; }
+    if (!currentUser) return;
+    if (postMode === "image" && !imageFile) return;
+    if (postMode === "image" && !location.trim()) { showToast("Location is required for every Diary post", "error"); return; }
+    if (postMode === "quote" && !caption.trim()) { showToast("Write your diary quote first", "error"); return; }
     setLoading(true);
     try {
-      const uploadFile = await rotateImageFile(imageFile, rotation);
-      // Upload image
-      const ext = uploadFile.name.split(".").pop();
-      const path = `posts/${currentUser.id}/${Date.now()}.${ext}`;
-      const { error: uploadErr } = await supabase.storage.from("diary-media").upload(path, uploadFile);
-      if (uploadErr) throw uploadErr;
-
-      const { data: urlData } = supabase.storage.from("diary-media").getPublicUrl(path);
+      let publicUrl = "";
+      if (imageFile) {
+        const uploadFile = await rotateImageFile(imageFile, rotation);
+        const ext = uploadFile.name.split(".").pop();
+        const path = `posts/${currentUser.id}/${Date.now()}.${ext}`;
+        const { error: uploadErr } = await supabase.storage.from("diary-media").upload(path, uploadFile);
+        if (uploadErr) throw uploadErr;
+        const { data: urlData } = supabase.storage.from("diary-media").getPublicUrl(path);
+        publicUrl = urlData.publicUrl;
+      }
       const coords = placeToCoords(location.trim());
 
       // Insert post with Travel Map fields when the Supabase schema supports them.
       const postPayload = {
         user_id: currentUser.id,
-        image_url: urlData.publicUrl,
+        image_url: publicUrl,
         caption: caption.trim(),
         location: location.trim(),
         location_name: location.trim(),
         lat: coords.lat,
         lng: coords.lng,
-        category,
+        category: postMode === "quote" ? "quote" : category,
         season,
         filter_type: filterType,
       };
       let { error: postErr } = await supabase.from("posts").insert(postPayload);
       if (postErr && /location_name|lat|lng|season|filter_type/i.test(postErr.message || "")) {
-        const fallback = { user_id: currentUser.id, image_url: urlData.publicUrl, caption: caption.trim(), location: location.trim(), category };
+        const fallback = { user_id: currentUser.id, image_url: publicUrl, caption: caption.trim(), location: location.trim(), category: postMode === "quote" ? "quote" : category };
         const retry = await supabase.from("posts").insert(fallback);
         postErr = retry.error;
         if (!postErr) showToast("Moment shared. Add map/season columns in Supabase for full Travel Map storage.");
       }
       if (postErr) throw postErr;
 
-      showToast("Moment shared! 🌸");
+      showToast(postMode === "quote" ? "Diary quote shared! ✨" : "Moment shared! 🌸");
       setCaption(""); setLocation(""); setImageFile(null); setPreview(null); setSeason("spring"); setFilterType("warm"); setRotation(0);
-      setPage("home");
+      setPage(postMode === "quote" ? "quotes" : "home");
     } catch (err) {
       showToast(err.message || "Failed to post", "error");
     } finally {
@@ -1277,15 +1391,19 @@ function CreatePage({ currentUser, showToast, setPage }) {
   return (
     <div style={{ padding: "56px 16px 100px", background: C.cream, minHeight: "100vh" }}>
       {showCropper && <ImageCropper image={cropImage} shape="rect" onCrop={handleCropped} onCancel={() => setShowCropper(false)} />}
-      <h1 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 25, color: C.dark, margin: "0 0 4px" }}>New Moment</h1>
-      <p style={{ color: C.brown, fontSize: 13, fontFamily: "'Lato',sans-serif", marginBottom: 22 }}>Share a real moment with the world</p>
+      <h1 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 25, color: C.dark, margin: "0 0 4px" }}>Create</h1>
+      <p style={{ color: C.brown, fontSize: 13, fontFamily: "'Lato',sans-serif", marginBottom: 18 }}>Choose what you want to share</p>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 18 }}>
+        <button onClick={() => setPostMode("image")} style={{ background: postMode === "image" ? C.dark : C.white, color: postMode === "image" ? C.white : C.dark, border: `1.5px solid ${postMode === "image" ? C.dark : C.tan}`, borderRadius: 18, padding: "16px 12px", cursor: "pointer", fontWeight: 800 }}>🖼️ Post an image</button>
+        <button onClick={() => setPostMode("quote")} style={{ background: postMode === "quote" ? C.pink : C.white, color: postMode === "quote" ? C.white : C.dark, border: `1.5px solid ${postMode === "quote" ? C.pink : C.tan}`, borderRadius: 18, padding: "16px 12px", cursor: "pointer", fontWeight: 800 }}>✍️ Diary quote</button>
+      </div>
 
       {/* Upload area */}
-      <div onClick={() => fileRef.current.click()} style={{ width: "100%", aspectRatio: "1", background: C.beige, borderRadius: 20, border: `2px dashed ${C.tan}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", marginBottom: 18, overflow: "hidden" }}>
+      <div onClick={() => fileRef.current.click()} style={{ width: "100%", aspectRatio: postMode === "quote" ? "4/3" : "1", background: C.beige, borderRadius: 20, border: `2px dashed ${C.tan}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", marginBottom: 18, overflow: "hidden" }}>
         {preview ? <img src={preview} style={{ width: "100%", height: "100%", objectFit: "cover", filter: FILTERS[filterType] || "none", transform: `rotate(${rotation}deg)`, transition: "transform .25s ease, filter .25s ease" }} /> : (
           <>
             <span style={{ fontSize: 46 }}>📷</span>
-            <p style={{ fontFamily: "'Lato',sans-serif", color: C.brown, fontSize: 14, marginTop: 10 }}>Tap to upload your moment</p>
+            <p style={{ fontFamily: "'Lato',sans-serif", color: C.brown, fontSize: 14, marginTop: 10 }}>{postMode === "quote" ? "Tap to add an optional image" : "Tap to upload your moment"}</p>
             <p style={{ fontFamily: "'Lato',sans-serif", color: C.tan, fontSize: 11, margin: 0 }}>JPG, PNG up to 20MB</p>
           </>
         )}
@@ -1298,7 +1416,7 @@ function CreatePage({ currentUser, showToast, setPage }) {
         </div>
       )}
 
-      <Input placeholder="Write your moment... what does this place feel like?" value={caption} onChange={e => setCaption(e.target.value)} multiline style={{ marginBottom: 13 }} />
+      <Input placeholder={postMode === "quote" ? "Write your diary quote..." : "Write your moment... what does this place feel like?"} value={caption} onChange={e => setCaption(e.target.value)} multiline style={{ marginBottom: 13 }} />
       <Input placeholder="📍 Add location" value={location} onChange={e => setLocation(e.target.value)} style={{ marginBottom: 13 }} />
 
       <p style={{ margin: "-5px 0 13px", color: C.brown, fontSize: 11, fontFamily: "'Lato',sans-serif" }}>Location is required for every Diary moment and powers your Travel Map.</p>
@@ -1337,7 +1455,7 @@ function CreatePage({ currentUser, showToast, setPage }) {
         </div>
       </div>
 
-      <Btn variant="pink" onClick={handlePost} loading={loading} disabled={!imageFile || !currentUser || !location.trim()} style={{ width: "100%", fontSize: 15, padding: "15px", borderRadius: 16 }}>
+      <Btn variant="pink" onClick={handlePost} loading={loading} disabled={!currentUser || (postMode === "image" && (!imageFile || !location.trim())) || (postMode === "quote" && !caption.trim())} style={{ width: "100%", fontSize: 15, padding: "15px", borderRadius: 16 }}>
         Share your Moment ✦
       </Btn>
       {!currentUser && <p style={{ textAlign: "center", color: C.brown, fontSize: 12, fontFamily: "'Lato',sans-serif", marginTop: 10 }}>Sign in to share moments</p>}
@@ -1464,6 +1582,144 @@ function DiscoverPage({ showToast, onOpenProfile }) {
   );
 }
 
+function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMode = "discover" }) {
+  const [search, setSearch] = useState("");
+  const [results, setResults] = useState([]);
+  const [posts, setPosts] = useState([]);
+  const [title, setTitle] = useState(forceMode === "quotes" ? "Discover Diary Quotes" : "Explore Diary");
+  const [searching, setSearching] = useState(false);
+  const [mode, setMode] = useState(forceMode);
+  const trending = ["Kyoto", "Takayama", "Hakone", "Nara", "Shirakawa-go", "Nikko"];
+  const vibeOptions = [
+    ["🌸 Peaceful", "rural"],
+    ["🏔️ Adventure", "adventure"],
+    ["🍜 Food", "food"],
+    ["🌿 Nature", "nature"],
+    ["🏯 Cultural", "cultural"],
+    ["🌊 Coastal", "coastal"],
+  ];
+
+  const loadFeed = useCallback(async () => {
+    let query = supabase.from("posts").select("*, profiles(username, avatar_url)").order("created_at", { ascending: false }).limit(30);
+    if (mode === "quotes") query = query.eq("category", "quote");
+    else query = query.neq("category", "quote");
+    const { data } = await query;
+    setPosts(data || []);
+    setTitle(mode === "quotes" ? "Find inspiration and share your creations" : "Explore Diary");
+  }, [mode]);
+
+  useEffect(() => { loadFeed(); }, [loadFeed]);
+  useEffect(() => { setMode(forceMode); }, [forceMode]);
+
+  const handleSearch = async () => {
+    if (!search.trim()) return;
+    setSearching(true);
+    const term = search.trim();
+    const [{ data: users }, { data: matchedPosts }] = await Promise.all([
+      supabase.from("profiles").select("*").or(`username.ilike.%${term}%,full_name.ilike.%${term}%,location.ilike.%${term}%`).limit(10),
+      supabase.from("posts").select("*, profiles(username, avatar_url)").or(`location.ilike.%${term}%,caption.ilike.%${term}%,category.ilike.%${term}%`).limit(30),
+    ]);
+    setResults(users || []);
+    setPosts((matchedPosts || []).filter(p => mode === "quotes" ? p.category === "quote" : p.category !== "quote"));
+    setTitle(`Results for "${term}"`);
+    setSearching(false);
+  };
+
+  const loadByLocation = async (location) => {
+    setTitle(`Trending in ${location}`);
+    let query = supabase.from("posts").select("*, profiles(username, avatar_url)").ilike("location", `%${location}%`).limit(30);
+    if (mode === "quotes") query = query.eq("category", "quote");
+    const { data } = await query;
+    setPosts(data || []);
+  };
+
+  const loadByVibe = async (label, vibe) => {
+    setTitle(`${label} posts`);
+    const { data } = await supabase.from("posts").select("*, profiles(username, avatar_url)").eq("category", vibe).limit(30);
+    setPosts(data || []);
+  };
+
+  const hero = posts[0];
+
+  return (
+    <div style={{ padding: "56px 16px 100px", background: C.cream, minHeight: "100vh" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+        <h1 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 25, color: C.dark, margin: 0 }}>{mode === "quotes" ? "Discover Diary Quotes" : "Discover"}</h1>
+        <div style={{ display: "flex", background: C.white, border: `1px solid ${C.beige}`, borderRadius: 999, padding: 4 }}>
+          <button onClick={() => { setMode("discover"); setPage?.("discover"); }} style={{ background: mode === "discover" ? C.beige : "transparent", border: "none", padding: "8px 12px", borderRadius: 999, cursor: "pointer", fontWeight: 700 }}>Discover</button>
+          <button onClick={() => { setMode("quotes"); setPage?.("quotes"); }} style={{ background: mode === "quotes" ? C.beige : "transparent", border: "none", padding: "8px 12px", borderRadius: 999, cursor: "pointer", fontWeight: 700 }}>Diary Quotes</button>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        <Input placeholder={mode === "quotes" ? "Search quotes..." : "Search people, places..."} value={search} onChange={e => setSearch(e.target.value)} icon="🔍" style={{ flex: 1 }} />
+        <Btn variant="primary" onClick={handleSearch} loading={searching} style={{ borderRadius: 12, padding: "13px 18px" }}>Go</Btn>
+      </div>
+      {results.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          {results.map(u => (
+            <div key={u.id} onClick={() => onOpenProfile?.(u.id)} style={{ display: "flex", alignItems: "center", gap: 12, background: C.white, borderRadius: 14, padding: "12px", marginBottom: 10, boxShadow: `0 2px 10px ${C.shadow}`, cursor: "pointer" }}>
+              <Avatar src={u.avatar_url} size={44} />
+              <div>
+                <p style={{ margin: 0, fontWeight: 700, color: C.dark }}>{displayHandle(u.username)}</p>
+                {u.bio && <p style={{ margin: 0, fontSize: 12, color: C.brown }}>{u.bio}</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {hero && (
+        <div onClick={() => onOpenPost?.(hero)} style={{ marginBottom: 22, cursor: "pointer" }}>
+          <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>{mode === "quotes" ? "Featured diary quote" : "Today’s Moment"}</h3>
+          <div style={{ borderRadius: 20, overflow: "hidden", position: "relative", minHeight: 190, background: C.white }}>
+            {hero.image_url ? <img src={hero.image_url} style={{ width: "100%", height: 190, objectFit: "cover", filter: FILTERS[hero.filter_type || "none"] || "none" }} /> : <div style={{ padding: 24, minHeight: 190, display: "flex", alignItems: "center" }}><p style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 24, color: C.dark }}>{hero.caption}</p></div>}
+            <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top,#4A372888,transparent)" }} />
+            <div style={{ position: "absolute", bottom: 16, left: 16, right: 16 }}>
+              <p style={{ color: C.cream, fontFamily: "'Playfair Display',Georgia,serif", fontSize: 18, fontWeight: 700, margin: 0 }}>{hero.caption?.slice(0, 70) || "Open this Diary"}</p>
+              <p style={{ color: C.softPink, fontSize: 12, margin: "3px 0 0" }}>📍 {hero.location || "Diary"}</p>
+            </div>
+          </div>
+        </div>
+      )}
+      {mode !== "quotes" && (
+        <>
+          <div style={{ marginBottom: 18 }}>
+            <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>📍 Trending Locations</h3>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {trending.map(t => (
+                <button key={t} onClick={() => loadByLocation(t)} style={{ background: C.white, border: `1px solid ${C.tan}`, borderRadius: 20, padding: "7px 13px", fontSize: 12, color: C.dark, cursor: "pointer", boxShadow: `0 2px 8px ${C.shadow}` }}>📍 {t}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{ marginBottom: 20 }}>
+            <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>Browse by Vibe</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {vibeOptions.map(([label, vibe]) => (
+                <button key={vibe} onClick={() => loadByVibe(label, vibe)} style={{ background: C.white, borderRadius: 14, padding: "15px", border: `1px solid ${C.beige}`, cursor: "pointer", boxShadow: `0 2px 10px ${C.shadow}`, fontSize: 14, color: C.dark, fontWeight: 700, textAlign: "center" }}>{label}</button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+      <div style={{ marginBottom: 22 }}>
+        <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>{title}</h3>
+        {mode === "quotes" ? (
+          <div style={{ display: "grid", gap: 14 }}>
+            {posts.map(p => <QuoteCard key={p.id} post={p} showToast={showToast} onOpenProfile={onOpenProfile} onOpenPost={onOpenPost} />)}
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
+            {posts.map(p => <img key={p.id} onClick={() => onOpenPost?.(p)} src={p.image_url} alt="" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8, cursor: "pointer", filter: FILTERS[p.filter_type || "none"] || "none" }} />)}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DiaryQuotesPage(props) {
+  return <DiscoverPage2 {...props} forceMode="quotes" />;
+}
+
 // ============================================================
 // MEMORIES PAGE — REAL BOOKMARKS
 // ============================================================
@@ -1519,13 +1775,13 @@ function MemoriesPage({ currentUser, showToast }) {
 // ============================================================
 // PROFILE PAGE — REAL PROFILE FROM SUPABASE
 // ============================================================
-function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onProfileUpdated }) {
+function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onProfileUpdated, onOpenPost }) {
   const [posts, setPosts] = useState([]);
   const [savedPosts, setSavedPosts] = useState([]);
   const [activeTab, setActiveTab] = useState("posts");
   const [editMode, setEditMode] = useState(false);
   const [profileData, setProfileData] = useState(profile);
-  const [form, setForm] = useState({ full_name: "", username: "", bio: "", location: "" });
+  const [form, setForm] = useState({ full_name: "", username: "", bio: "", location: "", website: "" });
   const [saving, setSaving] = useState(false);
   const [stats, setStats] = useState({ followers: 0, following: 0 });
   const [avatarFile, setAvatarFile] = useState(null);
@@ -1540,8 +1796,9 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
   const username = profileData?.username || currentUser?.email?.split("@")[0] || "user";
   const avatarSrc = avatarPreview || profileData?.avatar_url || `https://ui-avatars.com/api/?background=D4C5B0&color=4A3728&name=${encodeURIComponent(displayName)}`;
   const journeys = posts.filter(p => p.location || p.category === "adventure" || p.category === "cultural");
-  const tabPosts = activeTab === "saved" ? savedPosts : activeTab === "journeys" ? journeys : posts;
-  const emptyText = activeTab === "saved" ? "No saved memories yet" : activeTab === "journeys" ? "No journeys yet" : "No moments yet";
+  const quotes = posts.filter(p => p.category === "quote");
+  const tabPosts = activeTab === "saved" ? savedPosts : activeTab === "journeys" ? journeys : activeTab === "quotes" ? quotes : posts.filter(p => p.category !== "quote");
+  const emptyText = activeTab === "saved" ? "No saved memories yet" : activeTab === "journeys" ? "No journeys yet" : activeTab === "quotes" ? "No diary quotes yet" : "No moments yet";
 
   useEffect(() => {
     setProfileData(profile);
@@ -1550,12 +1807,14 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
       username: profile.username || "",
       bio: profile.bio || "",
       location: profile.location || "",
+      website: profile.website || "",
     });
     else if (currentUser) setForm({
       full_name: currentUser.email?.split("@")[0] || "",
       username: currentUser.email?.split("@")[0] || "",
       bio: "",
       location: "",
+      website: "",
     });
   }, [profile, currentUser]);
 
@@ -1599,6 +1858,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
         username: form.username.trim().replace(/^@+/, ""),
         bio: form.bio.trim(),
         location: form.location.trim(),
+        website: form.website.trim(),
       };
       if (avatarFile) {
         const path = `covers/${currentUser.id}-avatar.jpg`;
@@ -1705,11 +1965,11 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
           ))}
         </div>
 
-        <DiaryTravelMap posts={posts} title="Your Travel Map" onPostClick={(post) => showToast(`${post.location_name || post.location || "Diary"} moment`)} />
+        <DiaryTravelMap posts={posts} title="Your Travel Map" onPostClick={(post) => onOpenPost?.(post)} />
 
         {/* Tabs */}
         <div style={{ display: "flex", borderBottom: `2px solid ${C.beige}`, marginBottom: 14 }}>
-          {["posts", "journeys", "saved"].map(tab => (
+          {["posts", "journeys", "quotes", "saved"].map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)} style={{ flex: 1, background: "none", border: "none", padding: "10px", cursor: "pointer", fontFamily: "'Lato',sans-serif", fontSize: 11, fontWeight: 700, color: activeTab === tab ? C.pink : C.tan, borderBottom: activeTab === tab ? `2px solid ${C.pink}` : "2px solid transparent", marginBottom: -2, textTransform: "uppercase", letterSpacing: "0.5px" }}>
               {tab === "saved" ? "memories" : tab}
             </button>
@@ -1742,7 +2002,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
 // ============================================================
 // PUBLIC PROFILE PAGE
 // ============================================================
-function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessageUser }) {
+function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessageUser, onOpenPost }) {
   const [profile, setProfile] = useState(null);
   const [posts, setPosts] = useState([]);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -1804,8 +2064,9 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
   const isPrivate = Boolean(profile.is_private || profile.private_account);
   const canViewDiary = !isPrivate || isFollowing || currentUser?.id === profileId;
   const journeys = posts.filter(p => p.location || p.category === "adventure" || p.category === "cultural");
-  const visiblePosts = activeTab === "journeys" ? journeys : posts;
-  const emptyCopy = activeTab === "journeys" ? "No journeys shared yet" : "No public moments yet";
+  const quotes = posts.filter(p => p.category === "quote");
+  const visiblePosts = activeTab === "journeys" ? journeys : activeTab === "quotes" ? quotes : posts.filter(p => p.category !== "quote");
+  const emptyCopy = activeTab === "journeys" ? "No journeys shared yet" : activeTab === "quotes" ? "No diary quotes shared yet" : "No public moments yet";
 
   return (
     <div style={{ background: C.cream, minHeight: "100vh", paddingBottom: 100 }}>
@@ -1813,7 +2074,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
       <div style={{ height: 210, overflow: "visible", position: "relative", borderRadius: "0 0 34px 34px", boxShadow: `0 12px 30px ${C.shadow}`, marginBottom: 54 }}>
         <img src={profile.cover_url || "https://images.unsplash.com/photo-1528164344705-47542687000d?w=900&q=80"} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "0 0 34px 34px", display: "block" }} />
         <div style={{ position: "absolute", inset: 0, borderRadius: "0 0 34px 34px", background: "linear-gradient(to bottom,rgba(74,55,40,.05),rgba(250,247,242,.7))" }} />
-        <div style={{ position: "absolute", bottom: 18, left: 18, right: 18 }}>
+        <div style={{ position: "absolute", bottom: 18, left: 118, right: 18 }}>
           <p style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", fontSize: 28, color: C.white, textShadow: "0 2px 12px rgba(0,0,0,.35)" }}>{profile.full_name || profile.username || "Diary user"}</p>
           <p style={{ margin: "2px 0 0", fontSize: 12, color: C.cream, textShadow: "0 2px 12px rgba(0,0,0,.45)" }}>{profile.location ? `Currently in ${profile.location}` : "Rural memories"}</p>
         </div>
@@ -1833,6 +2094,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
         <p style={{ margin: "0 0 8px", color: C.brown, fontFamily: "'Lato',sans-serif" }}>{displayHandle(profile.username)}</p>
         {profile.bio && <p style={{ color: C.dark, fontSize: 13, lineHeight: 1.55, marginBottom: 8 }}>{profile.bio}</p>}
         {profile.location && <p style={{ color: C.brown, fontSize: 12, marginBottom: 8 }}>Currently in: {profile.location}</p>}
+        {profile.website && <a href={/^https?:\/\//.test(profile.website) ? profile.website : `https://${profile.website}`} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginBottom: 10, color: C.pink, textDecoration: "none", fontWeight: 700 }}>🔗 {profile.website}</a>}
         {currentUser?.id !== profileId && <button onClick={handleBlock} style={{ border: "none", background: "none", color: C.red, cursor: "pointer", padding: 0, marginBottom: 16 }}>Block user</button>}
         <div style={{ display: "flex", justifyContent: "space-around", background: C.white, borderRadius: 18, padding: "14px 10px", margin: "8px 0 18px", boxShadow: `0 8px 24px ${C.shadow}` }}>
           {[["Posts", posts.length], ["Journeys", journeys.length], ["Followers", stats.followers], ["Following", stats.following]].map(([label, value]) => (
@@ -1851,9 +2113,9 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
           </div>
         ) : (
           <>
-            <DiaryTravelMap posts={posts} title={`${profile.full_name || profile.username || "Diary"}'s Travel Map`} onPostClick={(post) => showToast(`${post.location_name || post.location || "Diary"} moment`)} />
+            <DiaryTravelMap posts={posts} title={`${profile.full_name || profile.username || "Diary"}'s Travel Map`} onPostClick={(post) => onOpenPost?.(post)} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
-              {["posts", "journeys"].map(tab => (
+              {["posts", "journeys", "quotes"].map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)} style={{ background: activeTab === tab ? C.dark : C.white, color: activeTab === tab ? C.cream : C.brown, border: `1px solid ${C.beige}`, borderRadius: 14, padding: "11px 10px", cursor: "pointer", fontWeight: 800, textTransform: "capitalize", boxShadow: `0 4px 14px ${C.shadow}` }}>{tab}</button>
               ))}
             </div>
@@ -1959,9 +2221,10 @@ function AdminReportsPage({ setPage, showToast }) {
 // ============================================================
 // SETTINGS PAGE
 // ============================================================
-function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onProfileUpdated }) {
+function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onProfileUpdated, theme, setTheme, onThemeImage }) {
   const [privateAccount, setPrivateAccount] = useState(false);
   const [notifications, setNotifications] = useState(true);
+  const themeRef = useRef();
   useEffect(() => {
     setPrivateAccount(Boolean(profile?.is_private || profile?.private_account));
   }, [profile]);
@@ -2050,6 +2313,18 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
             </div>
             <span style={{ color: C.tan }}>›</span>
           </div>
+        </div>
+      </div>
+      <div style={{ marginBottom: 22 }}>
+        <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 10, fontWeight: 700, color: C.tan, letterSpacing: "1px", textTransform: "uppercase", margin: "0 0 7px" }}>Theme</p>
+        <div style={{ background: C.white, borderRadius: 16, padding: 14, boxShadow: `0 4px 16px ${C.shadow}` }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
+            {["light", "dark", "custom"].map(mode => (
+              <button key={mode} onClick={() => setTheme(p => ({ ...p, mode }))} style={{ background: theme?.mode === mode ? C.dark : C.white, color: theme?.mode === mode ? C.white : C.dark, border: `1px solid ${C.beige}`, borderRadius: 14, padding: "10px 8px", cursor: "pointer", fontWeight: 700, textTransform: "capitalize" }}>{mode}</button>
+            ))}
+          </div>
+          <button onClick={() => themeRef.current?.click()} style={{ width: "100%", background: C.beige, border: "none", borderRadius: 14, padding: "11px 12px", cursor: "pointer", color: C.dark, fontWeight: 700 }}>Upload theme background</button>
+          <input ref={themeRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onThemeImage} />
         </div>
       </div>
       <Btn variant="secondary" onClick={onLogout} style={{ width: "100%", borderRadius: 16, padding: "13px", fontSize: 14 }}>Sign Out</Btn>
@@ -2201,6 +2476,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser }) {
   const [newMsg, setNewMsg] = useState("");
   const [search, setSearch] = useState("");
   const [people, setPeople] = useState([]);
+  const [filter, setFilter] = useState("all");
 
   const loadConversations = useCallback(async () => {
     if (!currentUser) return;
@@ -2275,6 +2551,12 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser }) {
     loadConversations();
   };
 
+  const filteredConversations = conversations.filter((c, index) => {
+    if (filter === "all") return true;
+    if (filter === "unread") return index % 2 === 0;
+    return /circle|group|club|travel/i.test(c.full_name || c.username || "");
+  });
+
   return (
     <div style={{ background: C.cream, minHeight: "100vh", paddingBottom: active ? 0 : 100 }}>
       {active ? (
@@ -2315,6 +2597,11 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser }) {
           <PageHeader title="Messages" subtitle="Private Diary conversations" onBack={() => setPage("home")} />
           <div style={{ padding: 16 }}>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search people to message..." style={{ width: "100%", boxSizing: "border-box", padding: "13px 16px", border: `1.5px solid ${C.tan}`, borderRadius: 16, outline: "none", background: C.white, fontFamily: "'Lato',sans-serif" }} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 12 }}>
+              {["all", "unread", "groups"].map(key => (
+                <button key={key} onClick={() => setFilter(key)} style={{ background: filter === key ? C.dark : C.white, color: filter === key ? C.white : C.brown, border: `1px solid ${C.beige}`, borderRadius: 14, padding: "10px 8px", cursor: "pointer", fontWeight: 700, textTransform: "capitalize" }}>{key}</button>
+              ))}
+            </div>
             {people.length > 0 && (
               <div style={{ marginTop: 12, background: C.white, borderRadius: 18, overflow: "hidden", boxShadow: `0 4px 18px ${C.shadow}` }}>
                 {people.map(p => (
@@ -2334,7 +2621,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser }) {
                 <p style={{ fontSize: 34, margin: 0, color: C.dark, fontFamily: "'Playfair Display',Georgia,serif" }}>DM</p>
                 <p style={{ fontFamily: "'Playfair Display',Georgia,serif", color: C.brown, fontStyle: "italic" }}>No messages yet. Search a user above to start one.</p>
               </div>
-            ) : conversations.map(c => (
+            ) : filteredConversations.map(c => (
               <div key={c.id} onClick={() => openConvo(c)} style={{ display: "flex", alignItems: "center", gap: 12, background: C.white, borderRadius: 18, padding: "13px", marginBottom: 10, boxShadow: `0 2px 10px ${C.shadow}`, cursor: "pointer" }}>
                 <Avatar src={c.avatar_url} size={52} active />
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -2361,8 +2648,13 @@ export default function DiaryApp() {
   const [profile, setProfile] = useState(null);
   const [viewProfileId, setViewProfileId] = useState(null);
   const [dmInitialUser, setDmInitialUser] = useState(null);
+  const [focusedPost, setFocusedPost] = useState(null);
   const [showSignInStorm, setShowSignInStorm] = useState(false);
   const [toast, setToast] = useState({ msg: "", type: "success" });
+  const [theme, setTheme] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("diary-theme")) || { mode: "light", backgroundImage: "" }; }
+    catch { return { mode: "light", backgroundImage: "" }; }
+  });
 
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
@@ -2372,6 +2664,35 @@ export default function DiaryApp() {
   const fetchProfile = async (userId) => {
     const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
     setProfile(data);
+  };
+
+  useEffect(() => {
+    localStorage.setItem("diary-theme", JSON.stringify(theme));
+    if (theme.mode === "dark") {
+      C.cream = "#121212"; C.white = "#1A1A1A"; C.dark = "#F5EDE2"; C.brown = "#CFB9A6"; C.beige = "#242424"; C.tan = "#726255"; C.shadow = "rgba(0,0,0,0.35)";
+    } else if (theme.mode === "custom" && theme.tone === "dark") {
+      C.cream = "#101010"; C.white = "rgba(22,22,22,0.92)"; C.dark = "#FFF9F2"; C.brown = "#E6D0C0"; C.beige = "rgba(255,255,255,0.08)"; C.tan = "#AA978A"; C.shadow = "rgba(0,0,0,0.38)";
+    } else {
+      C.cream = "#FAF7F2"; C.beige = "#F0EBE1"; C.tan = "#D4C5B0"; C.brown = "#8B6F5E"; C.dark = "#4A3728"; C.white = "#FFFFFF"; C.shadow = "rgba(74,55,40,0.12)";
+    }
+  }, [theme]);
+
+  const handleThemeImage = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const palette = await analyzeImagePalette(file);
+      setTheme({ mode: "custom", backgroundImage: palette.image, tone: palette.tone });
+      showToast("Theme updated");
+    } catch {
+      showToast("Could not read that background image", "error");
+    }
+  };
+
+  const openPost = (post) => {
+    if (!post) return;
+    setFocusedPost(post);
+    setPage("postViewer");
   };
 
   // Check existing session
@@ -2406,7 +2727,7 @@ export default function DiaryApp() {
     showToast("Signed out. See you soon! 🌸");
   };
 
-  const navPages = ["home", "discover", "create", "memories", "profile"];
+  const navPages = ["home", "quotes", "discover", "create", "memories", "profile"];
   const showNav = navPages.includes(page);
   const openProfile = (id) => {
     if (!id) return;
@@ -2424,7 +2745,7 @@ export default function DiaryApp() {
   );
 
   return (
-    <div className="diary-paper" style={{ width: "100%", maxWidth: 480, margin: "0 auto", background: C.cream, minHeight: "100vh", position: "relative", overflowX: "hidden", boxShadow: `0 0 0 1px ${C.beige}` }}>
+    <div className="diary-paper" style={{ width: "100%", maxWidth: 480, margin: "0 auto", background: C.cream, minHeight: "100vh", position: "relative", overflowX: "hidden", boxShadow: `0 0 0 1px ${C.beige}`, backgroundImage: theme.backgroundImage ? `linear-gradient(rgba(0,0,0,${theme.mode === "dark" || theme.tone === "dark" ? 0.35 : 0.12}),rgba(0,0,0,${theme.mode === "dark" || theme.tone === "dark" ? 0.45 : 0.08})), url(${theme.backgroundImage})` : undefined, backgroundSize: "cover", backgroundAttachment: "fixed" }}>
       <FontLoader />
       <LovableVibeStyle />
 
@@ -2437,17 +2758,19 @@ export default function DiaryApp() {
 
       {screen === "app" && (
         <>
-          {page === "home" && <HomePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onOpenProfile={openProfile} />}
-          {page === "discover" && <DiscoverPage showToast={showToast} onOpenProfile={openProfile} />}
+          {page === "home" && <HomePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} />}
+          {page === "quotes" && <DiaryQuotesPage showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} setPage={setPage} />}
+          {page === "discover" && <DiscoverPage2 showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} setPage={setPage} />}
           {page === "create" && <CreatePage currentUser={currentUser} showToast={showToast} setPage={setPage} />}
           {page === "memories" && <MemoriesPage currentUser={currentUser} showToast={showToast} />}
-          {page === "profile" && <ProfilePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onLogout={handleLogout} onProfileUpdated={setProfile} />}
-          {page === "publicProfile" && <PublicProfilePage profileId={viewProfileId} currentUser={currentUser} setPage={setPage} showToast={showToast} onMessageUser={setDmInitialUser} />}
-          {page === "settings" && <SettingsPage onLogout={handleLogout} setPage={setPage} showToast={showToast} currentUser={currentUser} profile={profile} onProfileUpdated={setProfile} />}
+          {page === "profile" && <ProfilePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onLogout={handleLogout} onProfileUpdated={setProfile} onOpenPost={openPost} />}
+          {page === "publicProfile" && <PublicProfilePage profileId={viewProfileId} currentUser={currentUser} setPage={setPage} showToast={showToast} onMessageUser={setDmInitialUser} onOpenPost={openPost} />}
+          {page === "settings" && <SettingsPage onLogout={handleLogout} setPage={setPage} showToast={showToast} currentUser={currentUser} profile={profile} onProfileUpdated={setProfile} theme={theme} setTheme={setTheme} onThemeImage={handleThemeImage} />}
           {page === "adminReports" && <AdminReportsPage setPage={setPage} showToast={showToast} />}
           {page === "notifications" && <NotificationsPage currentUser={currentUser} setPage={setPage} />}
           {page === "dms" && <DMsPage2 currentUser={currentUser} setPage={setPage} showToast={showToast} initialUser={dmInitialUser} />}
-          {showNav && <BottomNav page={page} setPage={setPage} />}
+          {page === "postViewer" && <PostViewerPage post={focusedPost} setPage={setPage} showToast={showToast} />}
+          {showNav && <BottomNav2 page={page} setPage={setPage} />}
         </>
       )}
     </div>
