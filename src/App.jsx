@@ -283,6 +283,36 @@ function placeToCoords(place) {
   };
 }
 
+const HIDDEN_GEMS = [
+  {
+    id: "gem-kyoto",
+    name: "Kamo River Tea Corner",
+    description: "A quiet tea stop with river air and soft late-evening light.",
+    sponsor_link: "https://diary-app-eight-beta.vercel.app/",
+    image: "https://images.unsplash.com/photo-1515823662972-da6a2e4d3002?w=600&q=80",
+    lat: 35.0116,
+    lng: 135.7681,
+  },
+  {
+    id: "gem-nara",
+    name: "Lantern Path Bookshop",
+    description: "Hidden books, paper textures, and slow nostalgic playlists.",
+    sponsor_link: "https://diary-app-eight-beta.vercel.app/",
+    image: "https://images.unsplash.com/photo-1516979187457-637abb4f9353?w=600&q=80",
+    lat: 34.6851,
+    lng: 135.8048,
+  },
+  {
+    id: "gem-hakone",
+    name: "Mist Onsen Viewpoint",
+    description: "A calm viewpoint where the mountain fog rolls in like film grain.",
+    sponsor_link: "https://diary-app-eight-beta.vercel.app/",
+    image: "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=600&q=80",
+    lat: 35.2323,
+    lng: 139.1069,
+  },
+];
+
 function DiaryTravelMap({ posts = [], title = "Travel Map", onPostClick }) {
   const mapped = posts.filter(p => p.location || p.location_name || p.lat || p.lng).slice(0, 18);
   const mapRef = useRef(null);
@@ -294,7 +324,7 @@ function DiaryTravelMap({ posts = [], title = "Travel Map", onPostClick }) {
     const center = first ? placeToCoords(first.location_name || first.location || "Diary") : { lng: 78.9629, lat: 20.5937 };
     mapRef.current = new maplibregl.Map({
       container: mapElRef.current,
-      style: "https://demotiles.maplibre.org/style.json",
+      style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
       center: [Number(first?.lng ?? center.lng), Number(first?.lat ?? center.lat)],
       zoom: first ? 3.2 : 1.6,
       attributionControl: false,
@@ -319,12 +349,24 @@ function DiaryTravelMap({ posts = [], title = "Travel Map", onPostClick }) {
       ).addTo(mapRef.current);
       return marker;
     });
+    const gemMarkers = HIDDEN_GEMS.map((gem) => {
+      const el = document.createElement("button");
+      el.type = "button";
+      el.textContent = "✦";
+      el.style.cssText = `width:34px;height:34px;border-radius:50%;background:${C.dark};color:${C.cream};border:2px solid white;font-weight:900;box-shadow:0 6px 16px rgba(74,55,40,.28);cursor:pointer;font-family:Lato,sans-serif;font-size:15px;`;
+      const popupHtml = `<div style="min-width:180px"><img src="${gem.image}" style="width:100%;height:84px;object-fit:cover;border-radius:10px;margin-bottom:8px" /><strong>${gem.name}</strong><br/><span style="font-size:12px;color:#6b5b52">${gem.description}</span></div>`;
+      return new maplibregl.Marker({ element: el })
+        .setLngLat([gem.lng, gem.lat])
+        .setPopup(new maplibregl.Popup({ offset: 18 }).setHTML(popupHtml))
+        .addTo(mapRef.current);
+    });
     if (markers.length) {
       const bounds = new maplibregl.LngLatBounds();
       markers.forEach(marker => bounds.extend(marker.getLngLat()));
+      gemMarkers.forEach(marker => bounds.extend(marker.getLngLat()));
       mapRef.current.fitBounds(bounds, { padding: 55, maxZoom: 8, duration: 600 });
     }
-    return () => markers.forEach(marker => marker.remove());
+    return () => [...markers, ...gemMarkers].forEach(marker => marker.remove());
   }, [mapped, onPostClick]);
 
   return (
@@ -332,9 +374,9 @@ function DiaryTravelMap({ posts = [], title = "Travel Map", onPostClick }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <div>
           <h3 style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, fontSize: 20 }}>{title}</h3>
-          <p style={{ margin: "2px 0 0", fontSize: 12, color: C.brown }}>Pins show where Diary moments happened</p>
+          <p style={{ margin: "2px 0 0", fontSize: 12, color: C.brown }}>Pins show where Diary moments happened and where hidden gems live</p>
         </div>
-        <span style={{ color: C.pink, fontWeight: 900 }}>Map</span>
+        <span style={{ color: C.pink, fontWeight: 900 }}>Map ✦</span>
       </div>
       <div ref={mapElRef} style={{ position: "relative", height: 240, borderRadius: 20, overflow: "hidden", background: `linear-gradient(145deg,#E8F1ED,#F9EFE7 55%,#E9EDF6)`, border: `1px solid ${C.beige}` }}>
         {mapped.length === 0 && (
@@ -1339,6 +1381,7 @@ function CreatePage({ currentUser, showToast, setPage }) {
   const [postMode, setPostMode] = useState("image");
   const [caption, setCaption] = useState("");
   const [location, setLocation] = useState("");
+  const [arcTitle, setArcTitle] = useState("");
   const [category, setCategory] = useState("rural");
   const [season, setSeason] = useState("spring");
   const [filterType, setFilterType] = useState("warm");
@@ -1414,6 +1457,7 @@ function CreatePage({ currentUser, showToast, setPage }) {
         caption: caption.trim(),
         location: location.trim(),
         location_name: location.trim(),
+        journey_title: arcTitle.trim() || null,
         lat: coords.lat,
         lng: coords.lng,
         category: postMode === "quote" ? "quote" : category,
@@ -1421,7 +1465,7 @@ function CreatePage({ currentUser, showToast, setPage }) {
         filter_type: filterType,
       };
       let { error: postErr } = await supabase.from("posts").insert(postPayload);
-      if (postErr && /location_name|lat|lng|season|filter_type/i.test(postErr.message || "")) {
+      if (postErr && /location_name|lat|lng|season|filter_type|journey_title/i.test(postErr.message || "")) {
         const fallback = { user_id: currentUser.id, image_url: publicUrl, caption: caption.trim(), location: location.trim(), category: postMode === "quote" ? "quote" : category };
         const retry = await supabase.from("posts").insert(fallback);
         postErr = retry.error;
@@ -1430,7 +1474,7 @@ function CreatePage({ currentUser, showToast, setPage }) {
       if (postErr) throw postErr;
 
       showToast(postMode === "quote" ? "Diary quote shared! ✨" : "Moment shared! 🌸");
-      setCaption(""); setLocation(""); setImageFile(null); setPreview(null); setSeason("spring"); setFilterType("warm"); setRotation(0);
+      setCaption(""); setLocation(""); setArcTitle(""); setImageFile(null); setPreview(null); setSeason("spring"); setFilterType("warm"); setRotation(0);
       setPage(postMode === "quote" ? "quotes" : "home");
     } catch (err) {
       showToast(err.message || "Failed to post", "error");
@@ -1469,6 +1513,7 @@ function CreatePage({ currentUser, showToast, setPage }) {
 
       <Input placeholder={postMode === "quote" ? "Write your diary quote..." : "Write your moment... what does this place feel like?"} value={caption} onChange={e => setCaption(e.target.value)} multiline style={{ marginBottom: 13 }} />
       <Input placeholder="📍 Add location" value={location} onChange={e => setLocation(e.target.value)} style={{ marginBottom: 13 }} />
+      <Input placeholder="📖 Add to an Arc (optional)" value={arcTitle} onChange={e => setArcTitle(e.target.value)} style={{ marginBottom: 13 }} />
 
       <p style={{ margin: "-5px 0 13px", color: C.brown, fontSize: 11, fontFamily: "'Lato',sans-serif" }}>Location is required for every Diary moment and powers your Travel Map.</p>
 
@@ -1797,6 +1842,80 @@ function FollowListSheet({ open, title, users, onClose, onOpenProfile }) {
   );
 }
 
+const buildArcsFromPosts = (posts = []) => {
+  const groups = new Map();
+  (posts || []).forEach((post) => {
+    const key = (post.journey_title || post.location || post.category || "Diary Arc").trim();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(post);
+  });
+  return Array.from(groups.entries()).map(([title, entries], index) => {
+    const sorted = [...entries].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+    return {
+      id: `${title}-${index}`,
+      title,
+      summary: `${sorted.length} entry${sorted.length === 1 ? "" : "ies"}`,
+      cover: sorted[0]?.image_url,
+      entries: sorted,
+    };
+  }).filter(arc => arc.entries.length > 0);
+};
+
+function ArcShelf({ posts = [], title = "Personal Lore", onOpenPost }) {
+  const arcs = buildArcsFromPosts(posts);
+  const [activeArc, setActiveArc] = useState(null);
+  const [entryIndex, setEntryIndex] = useState(0);
+
+  if (!arcs.length) return null;
+
+  return (
+    <>
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <div>
+            <h3 style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, fontSize: 20 }}>{title}</h3>
+            <p style={{ margin: "2px 0 0", color: C.brown, fontSize: 12 }}>Grouped like a quiet visual diary, not a noisy feed</p>
+          </div>
+          <span style={{ color: C.pink, fontWeight: 800 }}>Arcs</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {arcs.map((arc) => (
+            <button key={arc.id} onClick={() => { setActiveArc(arc); setEntryIndex(0); }} style={{ border: "none", padding: 0, cursor: "pointer", textAlign: "left", borderRadius: 18, overflow: "hidden", background: C.white, boxShadow: `0 8px 24px ${C.shadow}` }}>
+              <div style={{ aspectRatio: "4/5", position: "relative", overflow: "hidden" }}>
+                {arc.cover ? <img src={arc.cover} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", background: C.beige }} />}
+                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top,rgba(0,0,0,.58),transparent 55%)" }} />
+                <div style={{ position: "absolute", left: 12, right: 12, bottom: 12 }}>
+                  <p style={{ margin: 0, color: C.cream, fontFamily: "'Playfair Display',Georgia,serif", fontSize: 18, fontWeight: 700 }}>{arc.title}</p>
+                  <p style={{ margin: "4px 0 0", color: "#F8E8EE", fontSize: 11 }}>{arc.summary}</p>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+      {activeArc && activeArc.entries[entryIndex] && (
+        <div style={{ position: "fixed", inset: 0, background: C.dark, zIndex: 9999, display: "flex", flexDirection: "column" }}>
+          <PageHeader title={activeArc.title} subtitle={`${entryIndex + 1} of ${activeArc.entries.length}`} onBack={() => setActiveArc(null)} />
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: 16 }}>
+            {entryIndex > 0 && <button onClick={() => setEntryIndex(i => i - 1)} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", width: 38, height: 38, borderRadius: "50%", border: "none", background: "rgba(255,255,255,.18)", color: C.white, cursor: "pointer" }}>‹</button>}
+            <div style={{ width: "100%", maxWidth: 420, background: "rgba(255,255,255,.06)", borderRadius: 24, overflow: "hidden" }}>
+              {activeArc.entries[entryIndex].image_url && <img src={activeArc.entries[entryIndex].image_url} style={{ width: "100%", maxHeight: "64vh", objectFit: "cover" }} />}
+              <div style={{ padding: 16, color: C.white }}>
+                <p style={{ margin: "0 0 8px", fontFamily: "'Playfair Display',Georgia,serif", fontSize: 22 }}>{activeArc.entries[entryIndex].caption || "A quiet page from this arc."}</p>
+                <p style={{ margin: 0, opacity: 0.8, fontSize: 12 }}>{activeArc.entries[entryIndex].location || activeArc.title}</p>
+              </div>
+            </div>
+            {entryIndex < activeArc.entries.length - 1 && <button onClick={() => setEntryIndex(i => i + 1)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", width: 38, height: 38, borderRadius: "50%", border: "none", background: "rgba(255,255,255,.18)", color: C.white, cursor: "pointer" }}>›</button>}
+          </div>
+          <div style={{ padding: "0 16px 20px" }}>
+            <button onClick={() => onOpenPost?.(activeArc.entries[entryIndex])} style={{ width: "100%", border: "none", borderRadius: 999, padding: "12px 16px", cursor: "pointer", background: C.white, color: C.dark, fontWeight: 800 }}>Open this entry</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ============================================================
 // MEMORIES PAGE — REAL BOOKMARKS
 // ============================================================
@@ -2096,6 +2215,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
           ))}
         </div>
 
+        <ArcShelf posts={posts} title="Your Personal Lore" onOpenPost={onOpenPost} />
         <DiaryTravelMap posts={posts} title="Your Travel Map" onPostClick={(post) => onOpenPost?.(post)} />
 
         {/* Tabs */}
@@ -2264,6 +2384,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
           </div>
         ) : (
           <>
+            <ArcShelf posts={posts} title={`${profile.full_name || profile.username || "Diary"}'s Personal Lore`} onOpenPost={onOpenPost} />
             <DiaryTravelMap posts={posts} title={`${profile.full_name || profile.username || "Diary"}'s Travel Map`} onPostClick={(post) => onOpenPost?.(post)} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
               {["posts", "journeys", "quotes"].map(tab => (
@@ -2373,29 +2494,53 @@ function AdminReportsPage({ setPage, showToast }) {
 // ============================================================
 // SETTINGS PAGE
 // ============================================================
-function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onProfileUpdated, theme, setTheme, onThemeImage }) {
-  const [privateAccount, setPrivateAccount] = useState(false);
-  const [notifications, setNotifications] = useState(true);
+function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onProfileUpdated, theme, setTheme, onThemeImage, currentCountry, setCurrentCountry }) {
   const themeRef = useRef();
+  const [prefs, setPrefs] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("diary-settings")) || {
+        defaultPrivacy: "public",
+        commentsFrom: "everyone",
+        notifications: { like: true, comment: true, follow: true, prompt: true },
+      };
+    } catch {
+      return { defaultPrivacy: "public", commentsFrom: "everyone", notifications: { like: true, comment: true, follow: true, prompt: true } };
+    }
+  });
+  const [privateAccount, setPrivateAccount] = useState(false);
+  const [emailDraft, setEmailDraft] = useState(currentUser?.email || "");
+  const [countryDraft, setCountryDraft] = useState(currentCountry || profile?.country || "");
+
   useEffect(() => {
     setPrivateAccount(Boolean(profile?.is_private || profile?.private_account));
-  }, [profile]);
+    setCountryDraft(currentCountry || profile?.country || "");
+    setEmailDraft(currentUser?.email || "");
+  }, [profile, currentCountry, currentUser]);
+
+  useEffect(() => {
+    localStorage.setItem("diary-settings", JSON.stringify(prefs));
+  }, [prefs]);
+
+  const saveProfileFields = async (updates) => {
+    if (!currentUser) return;
+    const { data, error } = await supabase.from("profiles").upsert({ id: currentUser.id, ...updates }).select("*").single();
+    if (error) {
+      showToast(error.message || "Could not save settings", "error");
+      return null;
+    }
+    onProfileUpdated?.(data);
+    return data;
+  };
 
   const togglePrivacy = async () => {
     if (!currentUser) return;
     const next = !privateAccount;
     setPrivateAccount(next);
-    const { data, error } = await supabase.from("profiles")
-      .update({ is_private: next })
-      .eq("id", currentUser.id)
-      .select("*")
-      .single();
-    if (error) {
+    const data = await saveProfileFields({ is_private: next });
+    if (!data) {
       setPrivateAccount(!next);
-      showToast("Private account needs Supabase is_private column", "error");
       return;
     }
-    onProfileUpdated?.(data);
     showToast(`Account privacy set to ${next ? "private" : "public"}`);
   };
 
@@ -2408,6 +2553,22 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
     else showToast("Password updated");
   };
 
+  const handleChangeEmail = async () => {
+    if (!emailDraft.trim()) return;
+    const { error } = await supabase.auth.updateUser({ email: emailDraft.trim() });
+    if (error) showToast(error.message || "Could not update email", "error");
+    else showToast("Email change requested. Check your inbox to confirm.");
+  };
+
+  const handleSaveLocation = async () => {
+    const country = countryDraft.trim();
+    if (!country) return;
+    setCurrentCountry?.(country);
+    localStorage.setItem("diary-current-country", country);
+    await saveProfileFields({ country });
+    showToast(`Moments header set to ${country}`);
+  };
+
   const handleDeleteAccount = async () => {
     if (!currentUser || !confirm("Delete your Diary account data? This removes your posts, comments, bookmarks and profile.")) return;
     await supabase.from("comments").delete().eq("user_id", currentUser.id);
@@ -2415,70 +2576,153 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
     await supabase.from("bookmarks").delete().eq("user_id", currentUser.id);
     await supabase.from("posts").delete().eq("user_id", currentUser.id);
     await supabase.from("profiles").delete().eq("id", currentUser.id);
+    localStorage.removeItem("diary-settings");
     showToast("Account data deleted");
     onLogout();
   };
-  const handleSetting = (label) => {
-    if (label === "Edit Profile") setPage("profile");
-    else if (label === "Delete Account") handleDeleteAccount();
-    else if (label === "Change Password") handleChangePassword();
-    else if (label === "Account Privacy") togglePrivacy();
-    else if (label === "Diary Authority Queue") setPage("adminReports");
-    else if (label === "Notifications") { setNotifications(v => !v); showToast(`Notifications ${notifications ? "off" : "on"}`); }
-    else showToast("This feature is being polished — we’ll notify you soon.");
+
+  const exportDiary = async () => {
+    if (!currentUser) return;
+    const [{ data: posts }, { data: comments }, { data: bookmarks }, { data: follows }] = await Promise.all([
+      supabase.from("posts").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
+      supabase.from("comments").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
+      supabase.from("bookmarks").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
+      supabase.from("follows").select("*").or(`follower_id.eq.${currentUser.id},following_id.eq.${currentUser.id}`),
+    ]);
+    const blob = new Blob([JSON.stringify({ profile, posts: posts || [], comments: comments || [], bookmarks: bookmarks || [], follows: follows || [] }, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "diary-export.json";
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("Diary exported");
   };
-  const sections = [
-    { title: "Account", items: [{ icon: "✏️", label: "Edit Profile" }, { icon: "🔒", label: "Change Password" }, { icon: "🔔", label: "Notifications" }] },
-    { title: "Privacy", items: [{ icon: "👁️", label: "Account Privacy" }, { icon: "🚫", label: "Blocked Users" }] },
-    { title: "Business", items: [{ icon: "📊", label: "Creator Analytics" }, { icon: "🍃", label: "Advertise on Diary" }, { icon: "✦", label: "Diary Pro" }] },
-    { title: "Danger Zone", items: [{ icon: "🗑️", label: "Delete Account", danger: true }] },
-  ];
+
+  const clearCache = async () => {
+    localStorage.removeItem("diary-theme");
+    localStorage.removeItem("diary-settings");
+    localStorage.removeItem("diary-current-country");
+    showToast("Local cache cleared. Refresh to reload defaults.");
+  };
+
+  const toggleNotif = (key) => {
+    setPrefs(prev => ({
+      ...prev,
+      notifications: { ...prev.notifications, [key]: !prev.notifications[key] },
+    }));
+  };
+
+  const savePrivacyPrefs = async (nextPrefs) => {
+    setPrefs(nextPrefs);
+    await saveProfileFields({ default_privacy: nextPrefs.defaultPrivacy, comments_from: nextPrefs.commentsFrom });
+  };
+
+  const sectionTitle = (label) => <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 10, fontWeight: 700, color: C.tan, letterSpacing: "1px", textTransform: "uppercase", margin: "0 0 7px" }}>{label}</p>;
+  const cardStyle = { background: C.white, borderRadius: 16, padding: 14, boxShadow: `0 4px 16px ${C.shadow}`, marginBottom: 22 };
+
   return (
     <div style={{ padding: "56px 16px 100px", background: C.cream, minHeight: "100vh" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 26 }}>
         <button onClick={() => setPage("profile")} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: C.brown }}>←</button>
         <h1 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 23, color: C.dark, margin: 0 }}>Settings</h1>
       </div>
-      {sections.map(s => (
-        <div key={s.title} style={{ marginBottom: 22 }}>
-          <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 10, fontWeight: 700, color: C.tan, letterSpacing: "1px", textTransform: "uppercase", margin: "0 0 7px" }}>{s.title}</p>
-          <div style={{ background: C.white, borderRadius: 16, overflow: "hidden", boxShadow: `0 4px 16px ${C.shadow}` }}>
-            {s.items.map((item, i) => (
-              <div key={item.label} onClick={() => handleSetting(item.label)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 16px", borderBottom: i < s.items.length - 1 ? `1px solid ${C.beige}` : "none", cursor: "pointer" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <span style={{ fontSize: 17 }}>{item.icon}</span>
-                  <span style={{ fontFamily: "'Lato',sans-serif", fontSize: 14, color: item.danger ? C.red : C.dark, fontWeight: item.danger ? 700 : 400 }}>{item.label}</span>
-                </div>
-                <span style={{ color: C.tan }}>{item.label === "Account Privacy" ? (privateAccount ? "Private" : "Public") : "›"}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-      <div style={{ marginBottom: 22 }}>
-        <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 10, fontWeight: 700, color: C.tan, letterSpacing: "1px", textTransform: "uppercase", margin: "0 0 7px" }}>Diary Authority</p>
-        <div style={{ background: C.white, borderRadius: 16, overflow: "hidden", boxShadow: `0 4px 16px ${C.shadow}` }}>
-          <div onClick={() => setPage("adminReports")} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 16px", cursor: "pointer" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <span style={{ fontSize: 12, fontWeight: 900, color: C.pink }}>MOD</span>
-              <span style={{ fontFamily: "'Lato',sans-serif", fontSize: 14, color: C.dark }}>Diary Authority Queue</span>
-            </div>
-            <span style={{ color: C.tan }}>›</span>
+
+      {sectionTitle("Account")}
+      <div style={cardStyle}>
+        <div style={{ display: "grid", gap: 10 }}>
+          <button onClick={() => setPage("profile")} style={{ border: "none", background: C.beige, borderRadius: 14, padding: "12px 14px", cursor: "pointer", textAlign: "left", color: C.dark, fontWeight: 700 }}>Edit profile</button>
+          <Input placeholder="Email" value={emailDraft} onChange={e => setEmailDraft(e.target.value)} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <button onClick={handleChangeEmail} style={{ border: "none", background: C.white, borderRadius: 14, padding: "12px 14px", cursor: "pointer", color: C.dark, fontWeight: 700, borderColor: C.beige, borderStyle: "solid", borderWidth: 1 }}>Change email</button>
+            <button onClick={handleChangePassword} style={{ border: "none", background: C.white, borderRadius: 14, padding: "12px 14px", cursor: "pointer", color: C.dark, fontWeight: 700, borderColor: C.beige, borderStyle: "solid", borderWidth: 1 }}>Change password</button>
           </div>
         </div>
       </div>
-      <div style={{ marginBottom: 22 }}>
-        <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 10, fontWeight: 700, color: C.tan, letterSpacing: "1px", textTransform: "uppercase", margin: "0 0 7px" }}>Theme</p>
-        <div style={{ background: C.white, borderRadius: 16, padding: 14, boxShadow: `0 4px 16px ${C.shadow}` }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
-            {["light", "dark", "custom"].map(mode => (
-              <button key={mode} onClick={() => setTheme(p => ({ ...p, mode }))} style={{ background: theme?.mode === mode ? C.dark : C.white, color: theme?.mode === mode ? C.white : C.dark, border: `1px solid ${C.beige}`, borderRadius: 14, padding: "10px 8px", cursor: "pointer", fontWeight: 700, textTransform: "capitalize" }}>{mode}</button>
-            ))}
+
+      {sectionTitle("Privacy")}
+      <div style={cardStyle}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div>
+            <p style={{ margin: 0, color: C.dark, fontWeight: 800 }}>Make my diary private by default</p>
+            <p style={{ margin: "3px 0 0", color: C.brown, fontSize: 12 }}>Only followers can see private diaries.</p>
           </div>
-          <button onClick={() => themeRef.current?.click()} style={{ width: "100%", background: C.beige, border: "none", borderRadius: 14, padding: "11px 12px", cursor: "pointer", color: C.dark, fontWeight: 700 }}>Upload theme background</button>
-          <input ref={themeRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onThemeImage} />
+          <button onClick={togglePrivacy} style={{ border: "none", borderRadius: 999, padding: "10px 14px", cursor: "pointer", background: privateAccount ? C.dark : C.beige, color: privateAccount ? C.white : C.dark, fontWeight: 800 }}>{privateAccount ? "Private" : "Public"}</button>
+        </div>
+        <div style={{ display: "grid", gap: 10 }}>
+          <label style={{ color: C.brown, fontSize: 12 }}>Default privacy</label>
+          <select value={prefs.defaultPrivacy} onChange={e => savePrivacyPrefs({ ...prefs, defaultPrivacy: e.target.value })} style={{ padding: "12px 14px", borderRadius: 14, border: `1px solid ${C.beige}`, background: C.white, color: C.dark }}>
+            <option value="public">Public</option>
+            <option value="followers">Followers only</option>
+            <option value="private">Private</option>
+          </select>
+          <label style={{ color: C.brown, fontSize: 12 }}>Allow comments from</label>
+          <select value={prefs.commentsFrom} onChange={e => savePrivacyPrefs({ ...prefs, commentsFrom: e.target.value })} style={{ padding: "12px 14px", borderRadius: 14, border: `1px solid ${C.beige}`, background: C.white, color: C.dark }}>
+            <option value="everyone">Everyone</option>
+            <option value="followers">Only followers</option>
+            <option value="nobody">Nobody</option>
+          </select>
         </div>
       </div>
+
+      {sectionTitle("Notifications")}
+      <div style={cardStyle}>
+        {[
+          ["like", "New like"],
+          ["comment", "New comment"],
+          ["follow", "New follower"],
+          ["prompt", "Daily prompt"],
+        ].map(([key, label], index, arr) => (
+          <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderBottom: index < arr.length - 1 ? `1px solid ${C.beige}` : "none" }}>
+            <span style={{ color: C.dark, fontWeight: 700 }}>{label}</span>
+            <button onClick={() => toggleNotif(key)} style={{ border: "none", borderRadius: 999, padding: "9px 12px", cursor: "pointer", background: prefs.notifications[key] ? C.pink : C.beige, color: prefs.notifications[key] ? C.white : C.dark, fontWeight: 800 }}>{prefs.notifications[key] ? "On" : "Off"}</button>
+          </div>
+        ))}
+      </div>
+
+      {sectionTitle("Appearance")}
+      <div style={cardStyle}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
+          {["light", "dark", "sepia", "custom"].map(mode => (
+            <button key={mode} onClick={() => setTheme(p => ({ ...p, mode }))} style={{ background: theme?.mode === mode ? C.dark : C.white, color: theme?.mode === mode ? C.white : C.dark, border: `1px solid ${C.beige}`, borderRadius: 14, padding: "10px 8px", cursor: "pointer", fontWeight: 700, textTransform: "capitalize" }}>{mode}</button>
+          ))}
+        </div>
+        <button onClick={() => themeRef.current?.click()} style={{ width: "100%", background: C.beige, border: "none", borderRadius: 14, padding: "11px 12px", cursor: "pointer", color: C.dark, fontWeight: 700 }}>Upload theme background</button>
+        <input ref={themeRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onThemeImage} />
+      </div>
+
+      {sectionTitle("Location")}
+      <div style={cardStyle}>
+        <p style={{ margin: "0 0 8px", color: C.dark, fontWeight: 800 }}>Current detected country</p>
+        <p style={{ margin: "0 0 12px", color: C.brown }}>{currentCountry || "Not detected yet"}</p>
+        <Input placeholder="Manual country override" value={countryDraft} onChange={e => setCountryDraft(e.target.value)} />
+        <button onClick={handleSaveLocation} style={{ marginTop: 10, width: "100%", border: "none", background: C.white, borderRadius: 14, padding: "12px 14px", cursor: "pointer", color: C.dark, fontWeight: 700, borderColor: C.beige, borderStyle: "solid", borderWidth: 1 }}>Save location</button>
+      </div>
+
+      {sectionTitle("Data & Storage")}
+      <div style={cardStyle}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <button onClick={exportDiary} style={{ border: "none", background: C.beige, borderRadius: 14, padding: "12px 14px", cursor: "pointer", color: C.dark, fontWeight: 700 }}>Export my diary</button>
+          <button onClick={clearCache} style={{ border: "none", background: C.white, borderRadius: 14, padding: "12px 14px", cursor: "pointer", color: C.dark, fontWeight: 700, borderColor: C.beige, borderStyle: "solid", borderWidth: 1 }}>Clear cache</button>
+        </div>
+      </div>
+
+      {sectionTitle("Help & Support")}
+      <div style={cardStyle}>
+        <a href="mailto:support@diary.com?subject=Diary%20Support" style={{ display: "block", color: C.pink, textDecoration: "none", fontWeight: 800, marginBottom: 8 }}>Email support</a>
+        <button onClick={() => showToast("The FAQ is being polished — we’ll notify you soon.")} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", color: C.dark, fontWeight: 700 }}>Open FAQ</button>
+      </div>
+
+      {sectionTitle("Diary Authority")}
+      <div style={cardStyle}>
+        <button onClick={() => setPage("adminReports")} style={{ width: "100%", border: "none", background: "none", padding: 0, textAlign: "left", cursor: "pointer", color: C.dark, fontWeight: 700 }}>Open Diary Authority Queue</button>
+      </div>
+
+      {sectionTitle("Danger Zone")}
+      <div style={cardStyle}>
+        <button onClick={handleDeleteAccount} style={{ width: "100%", border: "none", background: "none", padding: 0, textAlign: "left", cursor: "pointer", color: C.red, fontWeight: 800 }}>Delete account</button>
+      </div>
+
       <Btn variant="secondary" onClick={onLogout} style={{ width: "100%", borderRadius: 16, padding: "13px", fontSize: 14 }}>Sign Out</Btn>
       <div style={{ textAlign: "center", marginTop: 30, color: C.tan, fontFamily: "'Lato',sans-serif", fontSize: 11, lineHeight: 1.8 }}>
         <p style={{ margin: 0 }}>© 2026 Diary Inc. All rights reserved.</p>
@@ -2491,7 +2735,7 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
 // ============================================================
 // NOTIFICATIONS PAGE
 // ============================================================
-function NotificationsPage({ currentUser, setPage }) {
+function NotificationsPage({ currentUser, setPage, onOpenProfile }) {
   const [notifs, setNotifs] = useState([]);
   useEffect(() => {
     if (!currentUser) return;
@@ -2517,11 +2761,11 @@ function NotificationsPage({ currentUser, setPage }) {
         </div>
       ) : notifs.map(n => (
         <div key={n.id} style={{ display: "flex", alignItems: "center", gap: 12, background: n.read ? C.white : C.beige, borderRadius: 14, padding: "13px", marginBottom: 10, boxShadow: `0 2px 10px ${C.shadow}` }}>
-          <Avatar src={n.profiles?.avatar_url} size={42} />
+          <Avatar src={n.profiles?.avatar_url} size={42} onClick={() => onOpenProfile?.(n.from_user_id)} />
           <div style={{ flex: 1 }}>
             <p style={{ margin: 0, fontFamily: "'Lato',sans-serif", fontSize: 13, color: C.dark, lineHeight: 1.4 }}>
               <span style={{ marginRight: 5 }}>{icons[n.type] || "🔔"}</span>
-              <span style={{ fontWeight: 700 }}>{n.profiles?.username}</span> {n.type === "like" ? "liked your photo" : n.type === "comment" ? "commented on your photo" : "started following you"}
+              <button onClick={() => onOpenProfile?.(n.from_user_id)} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", fontWeight: 700, color: C.dark }}>{displayHandle(n.profiles?.username, "user")}</button> {n.type === "like" ? "liked your photo" : n.type === "comment" ? "commented on your photo" : "started following you"}
             </p>
             <p style={{ margin: "3px 0 0", fontSize: 11, color: C.tan, fontFamily: "'Lato',sans-serif" }}>{new Date(n.created_at).toLocaleDateString()}</p>
           </div>
@@ -2859,6 +3103,8 @@ export default function DiaryApp() {
     localStorage.setItem("diary-theme", JSON.stringify(theme));
     if (theme.mode === "dark") {
       C.cream = "#121212"; C.white = "#1A1A1A"; C.dark = "#F5EDE2"; C.brown = "#CFB9A6"; C.beige = "#242424"; C.tan = "#726255"; C.shadow = "rgba(0,0,0,0.35)";
+    } else if (theme.mode === "sepia") {
+      C.cream = "#F4EBDD"; C.white = "#FFF8F0"; C.dark = "#4E3826"; C.brown = "#8A6648"; C.beige = "#E8D9C6"; C.tan = "#C9B093"; C.shadow = "rgba(78,56,38,0.14)";
     } else if (theme.mode === "custom" && theme.tone === "dark") {
       C.cream = "#101010"; C.white = "rgba(22,22,22,0.92)"; C.dark = "#FFF9F2"; C.brown = "#E6D0C0"; C.beige = "rgba(255,255,255,0.08)"; C.tan = "#AA978A"; C.shadow = "rgba(0,0,0,0.38)";
     } else {
@@ -2977,9 +3223,9 @@ export default function DiaryApp() {
           {page === "memories" && <MemoriesPage currentUser={currentUser} showToast={showToast} onOpenPost={openPost} />}
           {page === "profile" && <ProfilePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onLogout={handleLogout} onProfileUpdated={setProfile} onOpenPost={openPost} onOpenProfile={openProfile} />}
           {page === "publicProfile" && <PublicProfilePage profileId={viewProfileId} currentUser={currentUser} setPage={setPage} showToast={showToast} onMessageUser={setDmInitialUser} onOpenPost={openPost} onOpenProfile={openProfile} />}
-          {page === "settings" && <SettingsPage onLogout={handleLogout} setPage={setPage} showToast={showToast} currentUser={currentUser} profile={profile} onProfileUpdated={setProfile} theme={theme} setTheme={setTheme} onThemeImage={handleThemeImage} />}
+          {page === "settings" && <SettingsPage onLogout={handleLogout} setPage={setPage} showToast={showToast} currentUser={currentUser} profile={profile} onProfileUpdated={setProfile} theme={theme} setTheme={setTheme} onThemeImage={handleThemeImage} currentCountry={currentCountry} setCurrentCountry={setCurrentCountry} />}
           {page === "adminReports" && <AdminReportsPage setPage={setPage} showToast={showToast} />}
-          {page === "notifications" && <NotificationsPage currentUser={currentUser} setPage={setPage} />}
+          {page === "notifications" && <NotificationsPage currentUser={currentUser} setPage={setPage} onOpenProfile={openProfile} />}
           {page === "dms" && <DMsPage2 currentUser={currentUser} setPage={setPage} showToast={showToast} initialUser={dmInitialUser} onOpenProfile={openProfile} />}
           {page === "postViewer" && <PostViewerPage post={focusedPost} setPage={setPage} showToast={showToast} />}
           {showNav && <BottomNav2 page={page} setPage={setPage} />}
