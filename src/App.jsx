@@ -1110,7 +1110,11 @@ function HomePage({ currentUser, profile, currentCountry, setPage, showToast, on
   const [category, setCategory] = useState("all");
   const [feedSeason, setFeedSeason] = useState("all");
   const [showFilter, setShowFilter] = useState(false);
+  const [homeStoryGroup, setHomeStoryGroup] = useState(null);
+  const [homeStoryIndex, setHomeStoryIndex] = useState(0);
   const countryLabel = (currentCountry || profile?.country || "").trim();
+  const storyGroups = buildStoryGroupsByUser(posts);
+  const seenIds = getSeenStoryIds(currentUser?.id);
   const heading = category === "all"
     ? { title: `Moments in ${countryLabel || "your world"}`, sub: countryLabel ? `Diary moments around ${countryLabel}` : HEADINGS.all.sub }
     : (HEADINGS[category] || HEADINGS.all);
@@ -1247,11 +1251,15 @@ function HomePage({ currentUser, profile, currentCountry, setPage, showToast, on
               </div>
               <span style={{ fontSize: 10, color: C.brown, fontFamily: "'Lato',sans-serif" }}>New</span>
             </div>
-            {posts.slice(0, 5).map(p => (
-              <div key={p.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                <Avatar src={p.profiles?.avatar_url} size={50} active={true} />
-                <span style={{ fontSize: 10, color: C.brown, fontFamily: "'Lato',sans-serif", maxWidth: 54, textAlign: "center", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p.profiles?.username}</span>
-              </div>
+            {storyGroups.slice(0, 6).map(group => (
+              <button key={group.id} onClick={() => { setHomeStoryGroup(group); setHomeStoryIndex(0); }} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0, border: "none", background: "none", padding: 0, cursor: "pointer" }}>
+                <div style={{ width: 54, height: 54, borderRadius: "50%", padding: 2, background: group.posts.every((post) => seenIds.includes(post.id)) ? C.tan : `linear-gradient(135deg, ${C.pink}, ${C.dark})` }}>
+                  <div style={{ width: "100%", height: "100%", borderRadius: "50%", padding: 2, background: C.cream }}>
+                    <img src={group.avatar_url || group.posts[0]?.image_url} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
+                  </div>
+                </div>
+                <span style={{ fontSize: 10, color: C.brown, fontFamily: "'Lato',sans-serif", maxWidth: 54, textAlign: "center", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{group.label}</span>
+              </button>
             ))}
           </div>
         </div>
@@ -1324,6 +1332,17 @@ function HomePage({ currentUser, profile, currentCountry, setPage, showToast, on
           <p style={{ fontSize: 10, color: C.tan, marginTop: 4, fontFamily: "'Lato',sans-serif" }}>© 2026 Diary. All rights reserved.</p>
         </div>
       </div>
+      {homeStoryGroup && (
+        <StoryViewer
+          stories={homeStoryGroup.posts}
+          startIndex={homeStoryIndex}
+          onClose={() => setHomeStoryGroup(null)}
+          currentUser={currentUser}
+          showToast={showToast}
+          onOpenProfile={onOpenProfile}
+          onOpenPost={onOpenPost}
+        />
+      )}
     </div>
   );
 }
@@ -1842,6 +1861,244 @@ function FollowListSheet({ open, title, users, onClose, onOpenProfile }) {
   );
 }
 
+const STORY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+const getRecentMemoryPosts = (posts = [], max = 12) => {
+  const now = Date.now();
+  const sorted = [...(posts || [])].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  const recent = sorted.filter((post) => now - new Date(post.created_at || 0).getTime() <= STORY_WINDOW_MS);
+  return (recent.length ? recent : sorted).slice(0, max);
+};
+
+const buildStoryGroupsByUser = (posts = []) => {
+  const recent = getRecentMemoryPosts(posts, 18);
+  const groups = new Map();
+  recent.forEach((post) => {
+    const key = post.user_id || post.profiles?.username || post.id;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        id: key,
+        label: post.profiles?.username || "diary",
+        subtitle: post.profiles?.full_name || post.location || "Diary user",
+        avatar_url: post.profiles?.avatar_url,
+        posts: [],
+      });
+    }
+    groups.get(key).posts.push(post);
+  });
+  return Array.from(groups.values());
+};
+
+const getSeenStoryIds = (currentUserId) => {
+  if (!currentUserId) return [];
+  try {
+    const raw = JSON.parse(localStorage.getItem(`diary-story-seen:${currentUserId}`) || "[]");
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+};
+
+const markStorySeenLocal = (currentUser, story) => {
+  if (!currentUser?.id || !story?.id) return;
+  const key = `diary-story-seen:${currentUser.id}`;
+  const seen = new Set(getSeenStoryIds(currentUser.id));
+  seen.add(story.id);
+  localStorage.setItem(key, JSON.stringify(Array.from(seen)));
+
+  const viewersKey = `diary-story-viewers:${story.id}`;
+  const handle = displayHandle(currentUser.user_metadata?.username || currentUser.email?.split("@")[0] || "diary");
+  try {
+    const current = JSON.parse(localStorage.getItem(viewersKey) || "[]");
+    const next = Array.isArray(current) ? current : [];
+    if (!next.includes(handle)) next.push(handle);
+    localStorage.setItem(viewersKey, JSON.stringify(next));
+  } catch {}
+};
+
+function StoryTray({ title = "Memories", items = [], onOpenItem, onCreate, emptyText = "No memories yet" }) {
+  return (
+    <div style={{ background: C.beige, borderRadius: 18, padding: "13px 16px", marginBottom: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <span style={{ fontFamily: "'Lato',sans-serif", fontWeight: 700, fontSize: 13, color: C.dark }}>{title}</span>
+        <span style={{ fontSize: 11, color: C.brown }}>{items.length ? `${items.length} live` : emptyText}</span>
+      </div>
+      <div style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 2 }}>
+        {onCreate && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0 }}>
+            <button onClick={onCreate} style={{ width: 54, height: 54, borderRadius: "50%", border: "none", background: C.tan, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: C.white, fontSize: 21 }}>
+              +
+            </button>
+            <span style={{ fontSize: 10, color: C.brown, fontFamily: "'Lato',sans-serif" }}>New</span>
+          </div>
+        )}
+        {items.map((item, index) => (
+          <button key={item.id || index} onClick={() => onOpenItem?.(index)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0, border: "none", background: "none", padding: 0, cursor: "pointer" }}>
+            <div style={{ width: 58, height: 58, borderRadius: "50%", padding: 2, background: item.seen ? C.tan : `linear-gradient(135deg, ${C.pink}, ${C.dark})` }}>
+              <div style={{ width: "100%", height: "100%", borderRadius: "50%", padding: 2, background: C.cream }}>
+                <img src={item.image || item.avatar_url || `https://ui-avatars.com/api/?background=D4C5B0&color=4A3728&name=${encodeURIComponent(item.label || "Diary")}`} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} />
+              </div>
+            </div>
+            <span style={{ fontSize: 10, color: C.brown, fontFamily: "'Lato',sans-serif", maxWidth: 64, textAlign: "center", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{item.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showToast, onOpenProfile, onOpenPost }) {
+  const [index, setIndex] = useState(startIndex);
+  const [likedIds, setLikedIds] = useState(new Set());
+  const [likeDetails, setLikeDetails] = useState({});
+  const [viewersByStory, setViewersByStory] = useState({});
+  const story = stories[index];
+  const isOwner = Boolean(currentUser?.id && story?.user_id === currentUser.id);
+
+  useEffect(() => {
+    setIndex(startIndex);
+  }, [startIndex, stories]);
+
+  useEffect(() => {
+    if (!story || !currentUser) return;
+    markStorySeenLocal(currentUser, story);
+    (async () => {
+      try {
+        await supabase.from("story_views").upsert({ post_id: story.id, viewer_id: currentUser.id });
+      } catch {}
+    })();
+  }, [story?.id, currentUser?.id]);
+
+  useEffect(() => {
+    if (!stories.length || !currentUser) return;
+    const ids = stories.map((item) => item.id);
+    (async () => {
+      const [{ data: myLikes }, { data: likes }] = await Promise.all([
+        supabase.from("likes").select("post_id").eq("user_id", currentUser.id).in("post_id", ids),
+        supabase.from("likes").select("post_id, user_id, profiles!likes_user_id_fkey(username, full_name)").in("post_id", ids),
+      ]);
+      setLikedIds(new Set((myLikes || []).map((row) => row.post_id)));
+      const groupedLikes = {};
+      (likes || []).forEach((row) => {
+        if (!groupedLikes[row.post_id]) groupedLikes[row.post_id] = [];
+        groupedLikes[row.post_id].push(row.profiles?.username || row.profiles?.full_name || "Diary");
+      });
+      setLikeDetails(groupedLikes);
+
+      try {
+        const { data: views } = await supabase.from("story_views").select("post_id, viewer_id, profiles!story_views_viewer_id_fkey(username, full_name)").in("post_id", ids);
+        const groupedViews = {};
+        (views || []).forEach((row) => {
+          if (!groupedViews[row.post_id]) groupedViews[row.post_id] = [];
+          groupedViews[row.post_id].push(row.profiles?.username || row.profiles?.full_name || "Diary");
+        });
+        setViewersByStory(groupedViews);
+      } catch {
+        const localGrouped = {};
+        ids.forEach((id) => {
+          try {
+            const localViewers = JSON.parse(localStorage.getItem(`diary-story-viewers:${id}`) || "[]");
+            localGrouped[id] = Array.isArray(localViewers) ? localViewers : [];
+          } catch {
+            localGrouped[id] = [];
+          }
+        });
+        setViewersByStory(localGrouped);
+      }
+    })();
+  }, [stories, currentUser?.id]);
+
+  if (!story) return null;
+
+  const toggleStoryLike = async () => {
+    if (!currentUser) {
+      showToast?.("Sign in to appreciate memories", "error");
+      return;
+    }
+    const nextLiked = !likedIds.has(story.id);
+    setLikedIds((prev) => {
+      const next = new Set(prev);
+      if (nextLiked) next.add(story.id);
+      else next.delete(story.id);
+      return next;
+    });
+    setLikeDetails((prev) => {
+      const current = prev[story.id] || [];
+      const label = displayHandle(currentUser.user_metadata?.username || currentUser.email?.split("@")[0] || "you");
+      return {
+        ...prev,
+        [story.id]: nextLiked ? [...current.filter((name) => name !== label), label] : current.filter((name) => name !== label),
+      };
+    });
+    if (nextLiked) await supabase.from("likes").insert({ user_id: currentUser.id, post_id: story.id });
+    else await supabase.from("likes").delete().match({ user_id: currentUser.id, post_id: story.id });
+  };
+
+  const viewers = viewersByStory[story.id] || [];
+  const appreciators = likeDetails[story.id] || [];
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.95)", zIndex: 10000, display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${stories.length},1fr)`, gap: 4, padding: "10px 12px 0" }}>
+        {stories.map((item, itemIndex) => (
+          <div key={item.id || itemIndex} style={{ height: 3, borderRadius: 999, background: itemIndex <= index ? "rgba(255,255,255,.95)" : "rgba(255,255,255,.18)" }} />
+        ))}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", color: C.white }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <button onClick={() => onOpenProfile?.(story.user_id)} style={{ border: "none", background: "none", padding: 0, cursor: "pointer" }}>
+            <Avatar src={story.profiles?.avatar_url} size={38} active />
+          </button>
+          <div style={{ minWidth: 0 }}>
+            <button onClick={() => onOpenProfile?.(story.user_id)} style={{ border: "none", background: "none", color: C.white, padding: 0, cursor: "pointer", fontWeight: 800, fontSize: 13, textAlign: "left" }}>
+              {displayHandle(story.profiles?.username || "diary")}
+            </button>
+            <p style={{ margin: "2px 0 0", fontSize: 11, opacity: 0.85 }}>{new Date(story.created_at).toLocaleString()}</p>
+          </div>
+        </div>
+        <button onClick={onClose} style={{ border: "none", background: "none", color: C.white, fontSize: 24, cursor: "pointer" }}>✕</button>
+      </div>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: 12 }}>
+        {index > 0 && <button onClick={() => setIndex((value) => value - 1)} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", border: "none", width: 38, height: 38, borderRadius: "50%", background: "rgba(255,255,255,.16)", color: C.white, cursor: "pointer" }}>‹</button>}
+        <div style={{ width: "100%", maxWidth: 430, position: "relative" }}>
+          <img src={story.image_url} style={{ width: "100%", maxHeight: "72vh", objectFit: "contain", borderRadius: 24, boxShadow: "0 12px 40px rgba(0,0,0,.35)" }} />
+          {story.caption && (
+            <div style={{ position: "absolute", left: 18, right: 18, bottom: 18, background: "linear-gradient(to top, rgba(0,0,0,.68), rgba(0,0,0,.12))", borderRadius: 16, padding: 14 }}>
+              <p style={{ margin: "0 0 6px", color: C.white, lineHeight: 1.5 }}>{story.caption}</p>
+              <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,.82)" }}>{story.location || story.location_name || "Diary memory"}</p>
+            </div>
+          )}
+        </div>
+        {index < stories.length - 1 && <button onClick={() => setIndex((value) => value + 1)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", border: "none", width: 38, height: 38, borderRadius: "50%", background: "rgba(255,255,255,.16)", color: C.white, cursor: "pointer" }}>›</button>}
+      </div>
+      <div style={{ padding: "0 16px 18px", color: C.white }}>
+        <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+          <button onClick={toggleStoryLike} style={{ border: "none", borderRadius: 999, padding: "10px 14px", cursor: "pointer", background: likedIds.has(story.id) ? C.pink : "rgba(255,255,255,.12)", color: C.white, fontWeight: 800 }}>
+            {likedIds.has(story.id) ? "Diared" : "Diary like"}
+          </button>
+          <button onClick={() => onOpenPost?.(story)} style={{ border: "1px solid rgba(255,255,255,.28)", borderRadius: 999, padding: "10px 14px", cursor: "pointer", background: "transparent", color: C.white, fontWeight: 800 }}>
+            Open Diary
+          </button>
+        </div>
+        {isOwner ? (
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ background: "rgba(255,255,255,.1)", borderRadius: 16, padding: 12 }}>
+              <p style={{ margin: "0 0 4px", fontSize: 12, color: "rgba(255,255,255,.72)" }}>Seen by</p>
+              <p style={{ margin: 0, fontSize: 13 }}>{viewers.length ? viewers.join(", ") : "No viewers yet"}</p>
+            </div>
+            <div style={{ background: "rgba(255,255,255,.1)", borderRadius: 16, padding: 12 }}>
+              <p style={{ margin: "0 0 4px", fontSize: 12, color: "rgba(255,255,255,.72)" }}>Appreciated by</p>
+              <p style={{ margin: 0, fontSize: 13 }}>{appreciators.length ? appreciators.join(", ") : "No appreciations yet"}</p>
+            </div>
+          </div>
+        ) : (
+          <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,.76)" }}>Expires 24 hours after it is posted.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const buildArcsFromPosts = (posts = []) => {
   const groups = new Map();
   (posts || []).forEach((post) => {
@@ -1919,33 +2176,45 @@ function ArcShelf({ posts = [], title = "Personal Lore", onOpenPost }) {
 // ============================================================
 // MEMORIES PAGE — REAL BOOKMARKS
 // ============================================================
-function MemoriesPage({ currentUser, showToast, onOpenPost }) {
+function MemoriesPage({ currentUser, showToast, onOpenPost, onOpenProfile, setPage }) {
   const [saved, setSaved] = useState([]);
+  const [recentStories, setRecentStories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(null);
-  const [seenIds, setSeenIds] = useState([]);
+  const [storyIndex, setStoryIndex] = useState(null);
+  const seenIds = getSeenStoryIds(currentUser?.id);
 
   useEffect(() => {
     if (!currentUser) { setLoading(false); return; }
     (async () => {
-      const { data } = await supabase.from("bookmarks")
-        .select("*, posts(*, profiles(username, avatar_url))")
-        .eq("user_id", currentUser.id)
-        .order("created_at", { ascending: false });
-      setSaved((data || []).map(b => b.posts).filter(Boolean));
+      const [{ data: bookmarkData }, { data: ownPosts }] = await Promise.all([
+        supabase.from("bookmarks").select("*, posts(*, profiles(username, avatar_url, full_name))").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
+        supabase.from("posts").select("*, profiles(username, avatar_url, full_name)").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(18),
+      ]);
+      setSaved((bookmarkData || []).map(b => b.posts).filter(Boolean));
+      setRecentStories(getRecentMemoryPosts(ownPosts || []));
       setLoading(false);
     })();
   }, [currentUser]);
 
-  useEffect(() => {
-    if (activeIndex == null || !saved[activeIndex]) return;
-    setSeenIds(prev => prev.includes(saved[activeIndex].id) ? prev : [...prev, saved[activeIndex].id]);
-  }, [activeIndex, saved]);
-
   return (
     <div style={{ padding: "56px 16px 100px", background: "transparent", minHeight: "100vh" }}>
       <h1 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 25, color: C.dark, marginBottom: 4 }}>Memories</h1>
-      <p style={{ color: C.brown, fontSize: 13, fontFamily: "'Lato',sans-serif", marginBottom: 22 }}>Your saved moments & journeys</p>
+      <p style={{ color: C.brown, fontSize: 13, fontFamily: "'Lato',sans-serif", marginBottom: 22 }}>Your live memories and saved moments</p>
+      {currentUser && !loading && (
+        <StoryTray
+          title="Your 24h memories"
+          items={recentStories.map((story) => ({
+            id: story.id,
+            label: new Date(story.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+            image: story.image_url,
+            seen: seenIds.includes(story.id),
+          }))}
+          onOpenItem={setStoryIndex}
+          onCreate={() => setPage?.("create")}
+          emptyText="No live memories"
+        />
+      )}
 
       {!currentUser ? (
         <div style={{ textAlign: "center", padding: "40px 0" }}>
@@ -1971,6 +2240,17 @@ function MemoriesPage({ currentUser, showToast, onOpenPost }) {
             ))}
           </div>
         </>
+      )}
+      {storyIndex != null && recentStories[storyIndex] && (
+        <StoryViewer
+          stories={recentStories}
+          startIndex={storyIndex}
+          onClose={() => setStoryIndex(null)}
+          currentUser={currentUser}
+          showToast={showToast}
+          onOpenProfile={onOpenProfile}
+          onOpenPost={onOpenPost}
+        />
       )}
       {activeIndex != null && saved[activeIndex] && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.92)", zIndex: 9999, display: "flex", flexDirection: "column" }}>
@@ -2007,6 +2287,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
   const [posts, setPosts] = useState([]);
   const [savedPosts, setSavedPosts] = useState([]);
   const [activeTab, setActiveTab] = useState("posts");
+  const [storyIndex, setStoryIndex] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [profileData, setProfileData] = useState(profile);
   const [form, setForm] = useState({ full_name: "", username: "", bio: "", location: "", website: "" });
@@ -2026,6 +2307,8 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
   const avatarSrc = avatarPreview || profileData?.avatar_url || `https://ui-avatars.com/api/?background=D4C5B0&color=4A3728&name=${encodeURIComponent(displayName)}`;
   const journeys = posts.filter(p => p.location || p.category === "adventure" || p.category === "cultural");
   const quotes = posts.filter(p => p.category === "quote");
+  const recentStories = getRecentMemoryPosts(posts);
+  const seenStoryIds = getSeenStoryIds(currentUser?.id);
   const tabPosts = activeTab === "saved" ? savedPosts : activeTab === "journeys" ? journeys : activeTab === "quotes" ? quotes : posts.filter(p => p.category !== "quote");
   const emptyText = activeTab === "saved" ? "No saved memories yet" : activeTab === "journeys" ? "No journeys yet" : activeTab === "quotes" ? "No diary quotes yet" : "No moments yet";
 
@@ -2051,8 +2334,8 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
     if (!currentUser) return;
     (async () => {
       const [{ data: ownPosts }, { data: saved }] = await Promise.all([
-        supabase.from("posts").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
-        supabase.from("bookmarks").select("*, posts(*)").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
+        supabase.from("posts").select("*, profiles(username, avatar_url, full_name)").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
+        supabase.from("bookmarks").select("*, posts(*, profiles(username, avatar_url, full_name))").eq("user_id", currentUser.id).order("created_at", { ascending: false }),
       ]);
       setPosts(ownPosts || []);
       setSavedPosts((saved || []).map(b => b.posts).filter(Boolean));
@@ -2215,6 +2498,19 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
           ))}
         </div>
 
+        <StoryTray
+          title="Your live memories"
+          items={recentStories.map((story) => ({
+            id: story.id,
+            label: story.location || new Date(story.created_at).toLocaleDateString(),
+            image: story.image_url,
+            seen: seenStoryIds.includes(story.id),
+          }))}
+          onOpenItem={setStoryIndex}
+          onCreate={() => setPage("create")}
+          emptyText="No live memories"
+        />
+
         <ArcShelf posts={posts} title="Your Personal Lore" onOpenPost={onOpenPost} />
         <DiaryTravelMap posts={posts} title="Your Travel Map" onPostClick={(post) => onOpenPost?.(post)} />
 
@@ -2246,6 +2542,17 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
           )}
         </div>
       </div>
+      {storyIndex != null && recentStories[storyIndex] && (
+        <StoryViewer
+          stories={recentStories}
+          startIndex={storyIndex}
+          onClose={() => setStoryIndex(null)}
+          currentUser={currentUser}
+          showToast={showToast}
+          onOpenProfile={onOpenProfile}
+          onOpenPost={onOpenPost}
+        />
+      )}
       <FollowListSheet open={followSheet.open} title={followSheet.title} users={followSheet.users} onClose={() => setFollowSheet({ open: false, title: "", users: [] })} onOpenProfile={onOpenProfile} />
     </div>
   );
@@ -2260,6 +2567,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
   const [isFollowing, setIsFollowing] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("posts");
+  const [storyIndex, setStoryIndex] = useState(null);
   const [stats, setStats] = useState({ followers: 0, following: 0 });
   const [followSheet, setFollowSheet] = useState({ open: false, title: "", users: [] });
 
@@ -2268,7 +2576,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
     (async () => {
       const [{ data: profileData }, { data: postData }, { data: followData }, { count: followerCount }, { count: followingCount }] = await Promise.all([
         supabase.from("profiles").select("*").eq("id", profileId).single(),
-        supabase.from("posts").select("*").eq("user_id", profileId).order("created_at", { ascending: false }),
+        supabase.from("posts").select("*, profiles(username, avatar_url, full_name)").eq("user_id", profileId).order("created_at", { ascending: false }),
         currentUser ? supabase.from("follows").select("*").eq("follower_id", currentUser.id).eq("following_id", profileId).maybeSingle() : Promise.resolve({ data: null }),
         supabase.from("follows").select("*", { count: "exact", head: true }).eq("following_id", profileId),
         supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", profileId),
@@ -2331,6 +2639,8 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
   const canViewDiary = !isPrivate || isFollowing || currentUser?.id === profileId;
   const journeys = posts.filter(p => p.location || p.category === "adventure" || p.category === "cultural");
   const quotes = posts.filter(p => p.category === "quote");
+  const recentStories = getRecentMemoryPosts(posts);
+  const seenStoryIds = getSeenStoryIds(currentUser?.id);
   const visiblePosts = activeTab === "journeys" ? journeys : activeTab === "quotes" ? quotes : posts.filter(p => p.category !== "quote");
   const emptyCopy = activeTab === "journeys" ? "No journeys shared yet" : activeTab === "quotes" ? "No diary quotes shared yet" : "No public moments yet";
 
@@ -2384,6 +2694,17 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
           </div>
         ) : (
           <>
+            <StoryTray
+              title={`${profile.full_name || profile.username || "Diary"}'s memories`}
+              items={recentStories.map((story) => ({
+                id: story.id,
+                label: story.location || new Date(story.created_at).toLocaleDateString(),
+                image: story.image_url,
+                seen: seenStoryIds.includes(story.id),
+              }))}
+              onOpenItem={setStoryIndex}
+              emptyText="No live memories"
+            />
             <ArcShelf posts={posts} title={`${profile.full_name || profile.username || "Diary"}'s Personal Lore`} onOpenPost={onOpenPost} />
             <DiaryTravelMap posts={posts} title={`${profile.full_name || profile.username || "Diary"}'s Travel Map`} onPostClick={(post) => onOpenPost?.(post)} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
@@ -2402,6 +2723,17 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
           </>
         )}
       </div>
+      {storyIndex != null && recentStories[storyIndex] && (
+        <StoryViewer
+          stories={recentStories}
+          startIndex={storyIndex}
+          onClose={() => setStoryIndex(null)}
+          currentUser={currentUser}
+          showToast={showToast}
+          onOpenProfile={onOpenProfile}
+          onOpenPost={onOpenPost}
+        />
+      )}
       {reportOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.white, borderRadius: 18, padding: 18, maxWidth: 340, width: "100%" }}>
@@ -3220,7 +3552,7 @@ export default function DiaryApp() {
           {page === "quotes" && <DiaryQuotesPage showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} setPage={setPage} />}
           {page === "discover" && <DiscoverPage2 showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} setPage={setPage} />}
           {page === "create" && <CreatePage currentUser={currentUser} showToast={showToast} setPage={setPage} />}
-          {page === "memories" && <MemoriesPage currentUser={currentUser} showToast={showToast} onOpenPost={openPost} />}
+          {page === "memories" && <MemoriesPage currentUser={currentUser} showToast={showToast} onOpenPost={openPost} onOpenProfile={openProfile} setPage={setPage} />}
           {page === "profile" && <ProfilePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onLogout={handleLogout} onProfileUpdated={setProfile} onOpenPost={openPost} onOpenProfile={openProfile} />}
           {page === "publicProfile" && <PublicProfilePage profileId={viewProfileId} currentUser={currentUser} setPage={setPage} showToast={showToast} onMessageUser={setDmInitialUser} onOpenPost={openPost} onOpenProfile={openProfile} />}
           {page === "settings" && <SettingsPage onLogout={handleLogout} setPage={setPage} showToast={showToast} currentUser={currentUser} profile={profile} onProfileUpdated={setProfile} theme={theme} setTheme={setTheme} onThemeImage={handleThemeImage} currentCountry={currentCountry} setCurrentCountry={setCurrentCountry} />}

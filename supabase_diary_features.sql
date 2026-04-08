@@ -9,10 +9,18 @@ alter table public.posts
   add column if not exists location_name text,
   add column if not exists lat double precision,
   add column if not exists lng double precision,
+  add column if not exists journey_title text,
   add column if not exists season text,
   add column if not exists filter_type text,
   add column if not exists report_count integer not null default 0,
   add column if not exists is_hidden boolean not null default false;
+
+create table if not exists public.story_views (
+  post_id uuid not null references public.posts(id) on delete cascade,
+  viewer_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (post_id, viewer_id)
+);
 
 create table if not exists public.journeys (
   id uuid primary key default gen_random_uuid(),
