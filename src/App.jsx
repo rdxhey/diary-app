@@ -239,6 +239,7 @@ function PageHeader({ title, subtitle, onBack, right }) {
         </div>
         {right}
       </div>
+      <FollowListSheet open={followSheet.open} title={followSheet.title} users={followSheet.users} onClose={() => setFollowSheet({ open: false, title: "", users: [] })} onOpenProfile={onOpenProfile} />
     </div>
   );
 }
@@ -1629,6 +1630,29 @@ function DiscoverPage({ showToast, onOpenProfile }) {
           </div>
         </div>
       )}
+      {activeIndex != null && saved[activeIndex] && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.92)", zIndex: 9999, display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px", color: C.white }}>
+            <div>
+              <p style={{ margin: 0, fontWeight: 800 }}>{displayHandle(saved[activeIndex].profiles?.username || "diary")}</p>
+              <p style={{ margin: "3px 0 0", fontSize: 12, opacity: 0.88 }}>{new Date(saved[activeIndex].created_at).toLocaleString()}</p>
+            </div>
+            <button onClick={() => setActiveIndex(null)} style={{ border: "none", background: "none", color: C.white, fontSize: 22, cursor: "pointer" }}>✕</button>
+          </div>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: 16 }}>
+            {activeIndex > 0 && <button onClick={() => setActiveIndex(i => i - 1)} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", border: "none", background: "rgba(255,255,255,.18)", color: C.white, width: 36, height: 36, borderRadius: "50%", cursor: "pointer" }}>‹</button>}
+            <img src={saved[activeIndex].image_url} style={{ maxWidth: "100%", maxHeight: "74vh", objectFit: "contain", borderRadius: 18 }} />
+            {activeIndex < saved.length - 1 && <button onClick={() => setActiveIndex(i => i + 1)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", border: "none", background: "rgba(255,255,255,.18)", color: C.white, width: 36, height: 36, borderRadius: "50%", cursor: "pointer" }}>›</button>}
+          </div>
+          <div style={{ padding: "0 18px 22px", color: C.white }}>
+            <p style={{ margin: "0 0 8px", lineHeight: 1.5 }}>{saved[activeIndex].caption || "Saved memory"}</p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => onOpenPost?.(saved[activeIndex])} style={{ border: "none", borderRadius: 999, padding: "10px 14px", cursor: "pointer", background: C.white, color: C.dark, fontWeight: 800 }}>Open Diary</button>
+              <button onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/?post=${saved[activeIndex].id}`).then(() => showToast("Post link copied!"))} style={{ border: "1px solid rgba(255,255,255,.35)", borderRadius: 999, padding: "10px 14px", cursor: "pointer", background: "transparent", color: C.white, fontWeight: 800 }}>Share</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1771,12 +1795,40 @@ function DiaryQuotesPage(props) {
   return <DiscoverPage2 {...props} forceMode="quotes" />;
 }
 
+function FollowListSheet({ open, title, users, onClose, onOpenProfile }) {
+  if (!open) return null;
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 9999, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 480, background: C.white, borderRadius: "24px 24px 0 0", padding: "12px 16px 24px", boxShadow: `0 -14px 40px ${C.shadow}`, maxHeight: "72vh", overflowY: "auto" }}>
+        <div style={{ width: 42, height: 4, borderRadius: 999, background: C.tan, margin: "0 auto 12px", opacity: 0.7 }} />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <h3 style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark }}>{title}</h3>
+          <button onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 20, color: C.brown }}>✕</button>
+        </div>
+        {users.length === 0 ? (
+          <p style={{ color: C.brown, fontStyle: "italic", textAlign: "center", padding: "18px 0" }}>No people here yet</p>
+        ) : users.map(user => (
+          <button key={user.id} onClick={() => { onClose(); onOpenProfile?.(user.id); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, border: "none", borderBottom: `1px solid ${C.beige}`, background: "none", padding: "12px 0", cursor: "pointer", textAlign: "left" }}>
+            <Avatar src={user.avatar_url} size={44} active />
+            <div>
+              <p style={{ margin: 0, color: C.dark, fontWeight: 800 }}>{displayHandle(user.username)}</p>
+              <p style={{ margin: "2px 0 0", color: C.brown, fontSize: 12 }}>{user.full_name || "Diary user"}</p>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ============================================================
 // MEMORIES PAGE — REAL BOOKMARKS
 // ============================================================
-function MemoriesPage({ currentUser, showToast }) {
+function MemoriesPage({ currentUser, showToast, onOpenPost }) {
   const [saved, setSaved] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeIndex, setActiveIndex] = useState(null);
+  const [seenIds, setSeenIds] = useState([]);
 
   useEffect(() => {
     if (!currentUser) { setLoading(false); return; }
@@ -1812,9 +1864,10 @@ function MemoriesPage({ currentUser, showToast }) {
           <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>🔖 Saved Moments</h3>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 3 }}>
             {saved.map((post, i) => (
-              <div key={i} style={{ aspectRatio: "1", borderRadius: 8, overflow: "hidden" }}>
+              <button key={i} onClick={() => setActiveIndex(i)} style={{ aspectRatio: "1", borderRadius: 8, overflow: "hidden", border: "none", padding: 0, position: "relative", background: C.white, cursor: "pointer" }}>
                 <img src={post.image_url} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              </div>
+                {seenIds.includes(post.id) && <span style={{ position: "absolute", top: 6, right: 6, background: "rgba(255,255,255,.88)", color: C.dark, fontSize: 10, borderRadius: 999, padding: "3px 7px" }}>Seen</span>}
+              </button>
             ))}
           </div>
         </>
@@ -1826,7 +1879,7 @@ function MemoriesPage({ currentUser, showToast }) {
 // ============================================================
 // PROFILE PAGE — REAL PROFILE FROM SUPABASE
 // ============================================================
-function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onProfileUpdated, onOpenPost }) {
+function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onProfileUpdated, onOpenPost, onOpenProfile }) {
   const [posts, setPosts] = useState([]);
   const [savedPosts, setSavedPosts] = useState([]);
   const [activeTab, setActiveTab] = useState("posts");
@@ -1835,6 +1888,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
   const [form, setForm] = useState({ full_name: "", username: "", bio: "", location: "", website: "" });
   const [saving, setSaving] = useState(false);
   const [stats, setStats] = useState({ followers: 0, following: 0 });
+  const [followSheet, setFollowSheet] = useState({ open: false, title: "", users: [] });
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [avatarCropImage, setAvatarCropImage] = useState(null);
@@ -1886,6 +1940,25 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
       setStats({ followers: followerCount || 0, following: followingCount || 0 });
     })();
   }, [currentUser]);
+
+  const openFollowSheet = async (kind) => {
+    if (!currentUser) return;
+    const column = kind === "followers" ? "following_id" : "follower_id";
+    const idColumn = kind === "followers" ? "follower_id" : "following_id";
+    const { data } = await supabase.from("follows").select(`${idColumn}`).eq(column, currentUser.id);
+    const ids = (data || []).map(row => row[idColumn]).filter(Boolean);
+    if (!ids.length) {
+      setFollowSheet({ open: true, title: kind === "followers" ? "Followers" : "Following", users: [] });
+      return;
+    }
+    const { data: users } = await supabase.from("profiles").select("id, username, full_name, avatar_url").in("id", ids);
+    setFollowSheet({ open: true, title: kind === "followers" ? "Followers" : "Following", users: users || [] });
+  };
+
+  useEffect(() => {
+    if (activeIndex == null || !saved[activeIndex]) return;
+    setSeenIds(prev => prev.includes(saved[activeIndex].id) ? prev : [...prev, saved[activeIndex].id]);
+  }, [activeIndex, saved]);
 
   const handleAvatarPick = (e) => {
     const file = e.target.files[0];
@@ -2009,10 +2082,15 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
         {/* Stats */}
         <div style={{ display: "flex", justifyContent: "space-around", background: C.white, borderRadius: 16, padding: "13px", marginBottom: 18, boxShadow: `0 4px 16px ${C.shadow}` }}>
           {[["Posts", posts.length], ["Followers", stats.followers], ["Following", stats.following], ["Saved", savedPosts.length]].map(([label, val]) => (
-            <div key={label} style={{ textAlign: "center" }}>
+            <button key={label} onClick={() => {
+              if (label === "Saved") setActiveTab("saved");
+              if (label === "Posts") setActiveTab("posts");
+              if (label === "Followers") openFollowSheet("followers");
+              if (label === "Following") openFollowSheet("following");
+            }} style={{ textAlign: "center", border: "none", background: "none", cursor: "pointer" }}>
               <p style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", fontWeight: 700, fontSize: 18, color: C.dark }}>{val}</p>
               <p style={{ margin: 0, fontFamily: "'Lato',sans-serif", fontSize: 10, color: C.brown, marginTop: 1 }}>{label}</p>
-            </div>
+            </button>
           ))}
         </div>
 
@@ -2030,7 +2108,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
         {/* Grid */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 3 }}>
           {tabPosts.map(p => (
-            <div key={p.id} style={{ aspectRatio: "1", overflow: "hidden", position: "relative", borderRadius: 6 }}>
+            <div key={p.id} onClick={() => onOpenPost?.(p)} style={{ aspectRatio: "1", overflow: "hidden", position: "relative", borderRadius: 6, cursor: "pointer" }}>
               <img src={p.image_url} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top,rgba(0,0,0,.45),transparent)", opacity: 0.95, display: "flex", alignItems: "flex-end", justifyContent: "space-around", padding: 6 }}>
                 <button onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/?post=${p.id}`).then(() => showToast("Post link copied!"))} style={{ border: "none", borderRadius: "50%", width: 28, height: 28, background: "rgba(255,255,255,.9)", cursor: "pointer" }}>↗</button>
@@ -2053,13 +2131,14 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
 // ============================================================
 // PUBLIC PROFILE PAGE
 // ============================================================
-function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessageUser, onOpenPost }) {
+function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessageUser, onOpenPost, onOpenProfile }) {
   const [profile, setProfile] = useState(null);
   const [posts, setPosts] = useState([]);
   const [isFollowing, setIsFollowing] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("posts");
   const [stats, setStats] = useState({ followers: 0, following: 0 });
+  const [followSheet, setFollowSheet] = useState({ open: false, title: "", users: [] });
 
   useEffect(() => {
     if (!profileId) return;
@@ -2077,6 +2156,19 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
       setStats({ followers: followerCount || 0, following: followingCount || 0 });
     })();
   }, [profileId, currentUser]);
+
+  const openFollowSheet = async (kind) => {
+    const column = kind === "followers" ? "following_id" : "follower_id";
+    const idColumn = kind === "followers" ? "follower_id" : "following_id";
+    const { data } = await supabase.from("follows").select(`${idColumn}`).eq(column, profileId);
+    const ids = (data || []).map(row => row[idColumn]).filter(Boolean);
+    if (!ids.length) {
+      setFollowSheet({ open: true, title: kind === "followers" ? "Followers" : "Following", users: [] });
+      return;
+    }
+    const { data: users } = await supabase.from("profiles").select("id, username, full_name, avatar_url").in("id", ids);
+    setFollowSheet({ open: true, title: kind === "followers" ? "Followers" : "Following", users: users || [] });
+  };
 
   const handleFollow = async () => {
     if (!currentUser) { showToast("Sign in to follow users", "error"); return; }
@@ -2149,10 +2241,15 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
         {currentUser?.id !== profileId && <button onClick={handleBlock} style={{ border: "none", background: "none", color: C.red, cursor: "pointer", padding: 0, marginBottom: 16 }}>Block user</button>}
         <div style={{ display: "flex", justifyContent: "space-around", background: C.white, borderRadius: 18, padding: "14px 10px", margin: "8px 0 18px", boxShadow: `0 8px 24px ${C.shadow}` }}>
           {[["Posts", posts.length], ["Journeys", journeys.length], ["Followers", stats.followers], ["Following", stats.following]].map(([label, value]) => (
-            <div key={label} style={{ textAlign: "center" }}>
+            <button key={label} onClick={() => {
+              if (label === "Posts") setActiveTab("posts");
+              if (label === "Journeys") setActiveTab("journeys");
+              if (label === "Followers") openFollowSheet("followers");
+              if (label === "Following") openFollowSheet("following");
+            }} style={{ textAlign: "center", border: "none", background: "none", cursor: "pointer" }}>
               <p style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, fontWeight: 700, fontSize: 18 }}>{value}</p>
               <p style={{ margin: "2px 0 0", color: C.brown, fontSize: 10, textTransform: "uppercase", letterSpacing: ".6px" }}>{label}</p>
-            </div>
+            </button>
           ))}
         </div>
         {!canViewDiary ? (
@@ -2170,8 +2267,8 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
                 <button key={tab} onClick={() => setActiveTab(tab)} style={{ background: activeTab === tab ? C.dark : C.white, color: activeTab === tab ? C.cream : C.brown, border: `1px solid ${C.beige}`, borderRadius: 14, padding: "11px 10px", cursor: "pointer", fontWeight: 800, textTransform: "capitalize", boxShadow: `0 4px 14px ${C.shadow}` }}>{tab}</button>
               ))}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginTop: 12 }}>
-              {visiblePosts.map(p => <img key={p.id} src={p.image_url} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8 }} />)}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginTop: 12 }}>
+              {visiblePosts.map(p => <img key={p.id} onClick={() => onOpenPost?.(p)} src={p.image_url} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8, cursor: "pointer" }} />)}
             </div>
             {visiblePosts.length === 0 && (
               <div style={{ background: C.white, borderRadius: 22, padding: "34px 18px", textAlign: "center", boxShadow: `0 8px 24px ${C.shadow}` }}>
@@ -2190,6 +2287,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
           </div>
         </div>
       )}
+      <FollowListSheet open={followSheet.open} title={followSheet.title} users={followSheet.users} onClose={() => setFollowSheet({ open: false, title: "", users: [] })} onOpenProfile={onOpenProfile} />
     </div>
   );
 }
@@ -2845,9 +2943,9 @@ export default function DiaryApp() {
           {page === "quotes" && <DiaryQuotesPage showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} setPage={setPage} />}
           {page === "discover" && <DiscoverPage2 showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} setPage={setPage} />}
           {page === "create" && <CreatePage currentUser={currentUser} showToast={showToast} setPage={setPage} />}
-          {page === "memories" && <MemoriesPage currentUser={currentUser} showToast={showToast} />}
-          {page === "profile" && <ProfilePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onLogout={handleLogout} onProfileUpdated={setProfile} onOpenPost={openPost} />}
-          {page === "publicProfile" && <PublicProfilePage profileId={viewProfileId} currentUser={currentUser} setPage={setPage} showToast={showToast} onMessageUser={setDmInitialUser} onOpenPost={openPost} />}
+          {page === "memories" && <MemoriesPage currentUser={currentUser} showToast={showToast} onOpenPost={openPost} />}
+          {page === "profile" && <ProfilePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onLogout={handleLogout} onProfileUpdated={setProfile} onOpenPost={openPost} onOpenProfile={openProfile} />}
+          {page === "publicProfile" && <PublicProfilePage profileId={viewProfileId} currentUser={currentUser} setPage={setPage} showToast={showToast} onMessageUser={setDmInitialUser} onOpenPost={openPost} onOpenProfile={openProfile} />}
           {page === "settings" && <SettingsPage onLogout={handleLogout} setPage={setPage} showToast={showToast} currentUser={currentUser} profile={profile} onProfileUpdated={setProfile} theme={theme} setTheme={setTheme} onThemeImage={handleThemeImage} />}
           {page === "adminReports" && <AdminReportsPage setPage={setPage} showToast={showToast} />}
           {page === "notifications" && <NotificationsPage currentUser={currentUser} setPage={setPage} />}
