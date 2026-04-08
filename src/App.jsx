@@ -611,7 +611,7 @@ function ImageCropper({ image, shape = "circle", onCrop, onCancel }) {
 }
 function SignupPage({ onBack, onSuccess, showToast }) {
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState({ name: "", email: "", password: "", username: "", bio: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", username: "", bio: "", country: "" });
   const [loading, setLoading] = useState(false);
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);
@@ -664,6 +664,7 @@ function SignupPage({ onBack, onSuccess, showToast }) {
         full_name: form.name,
         username: form.username.trim().replace(/^@+/, ""),
         bio: form.bio,
+        country: form.country,
         avatar_url: avatarUrl,
       });
       if (profileError) throw profileError;
@@ -716,6 +717,7 @@ function SignupPage({ onBack, onSuccess, showToast }) {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
               <Input placeholder="@username" value={form.username} onChange={e => up("username", e.target.value.replace(/^@+/, ""))} icon="@" />
+              <Input placeholder="Country" value={form.country} onChange={e => up("country", e.target.value)} icon="🌍" />
               <Input placeholder="Your bio — what do you love to capture?" value={form.bio} onChange={e => up("bio", e.target.value)} multiline icon="✍" />
             </div>
             <div style={{ marginTop: "auto", paddingTop: 28 }}>
@@ -788,6 +790,7 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
   const [showComments, setShowComments] = useState(false);
   const [showActions, setShowActions] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [commentMenuId, setCommentMenuId] = useState(null);
   const [reportReason, setReportReason] = useState("Spam");
   const [reportDescription, setReportDescription] = useState("");
   const [showFullDiary, setShowFullDiary] = useState(false);
@@ -858,6 +861,25 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
     showToast("Comment deleted");
   };
 
+  const handleReportComment = async (commentObj) => {
+    if (!currentUser) { showToast("Sign in to report comments", "error"); return; }
+    let { error } = await supabase.from("reports").insert({
+      reporter_id: currentUser.id,
+      target_type: "comment",
+      target_id: commentObj.id,
+      reason: "Harassment",
+      description: `Comment report: ${commentObj.content}`,
+      status: "pending",
+    });
+    if (error && /target_type|target_id|description|status/i.test(error.message || "")) {
+      const fallback = await supabase.from("reports").insert({ reporter_id: currentUser.id, reported_user_id: commentObj.user_id, reason: "Comment report" });
+      error = fallback.error;
+    }
+    if (error) showToast(error.message || "Could not report comment", "error");
+    else showToast("Comment reported");
+    setCommentMenuId(null);
+  };
+
   const loadComments = async () => {
     const { data } = await supabase.from("comments")
       .select("*, profiles(username, avatar_url)")
@@ -911,7 +933,7 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
             <Avatar src={post.profiles?.avatar_url} size={38} />
           </div>
           <div onClick={() => onOpenProfile?.(post.user_id)} style={{ cursor: "pointer" }}>
-            <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: C.dark, fontFamily: "'Lato',sans-serif" }}>{post.profiles?.username || "user"}</p>
+            <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: C.dark, fontFamily: "'Lato',sans-serif" }}>{displayHandle(post.profiles?.username || "user")}</p>
             {post.location && <p style={{ margin: 0, fontSize: 11, color: C.brown, fontFamily: "'Lato',sans-serif" }}>📍 {post.location}</p>}
           </div>
         </div>
@@ -929,12 +951,12 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
           <div style={{ display: "flex", gap: 16 }}>
             <button onClick={handleLike} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: post.liked ? C.pink : C.tan, fontSize: 13, fontFamily: "'Lato',sans-serif", fontWeight: 700 }}>
               <span style={{ fontSize: 20, transform: post.liked ? "scale(1.15)" : "scale(1)", transition: "transform 0.18s", display: "block" }}>{post.liked ? "❤️" : "🤍"}</span>
-              <span style={{ fontSize: 22, marginLeft: -26, fontFamily: "'Playfair Display',Georgia,serif", background: C.white, position: "relative", zIndex: 1 }}>D</span> {post.likes_count || 0}
+              <span style={{ fontSize: 22, marginLeft: -26, fontFamily: "'Playfair Display',Georgia,serif", background: C.white, position: "relative", zIndex: 1 }}>D</span>
             </button>
             <button onClick={toggleComments} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: C.tan, fontSize: 13, fontFamily: "'Lato',sans-serif", fontWeight: 700 }}>
-              <span style={{ fontSize: 18 }}>💬</span> {post.comments_count || 0}
+              <span style={{ fontSize: 18 }}>💬</span>
             </button>
-            <button style={{ background: "none", border: "none", cursor: "pointer", color: C.tan, fontSize: 18 }}>↗️</button>
+            <button onClick={handleShare} style={{ background: "none", border: "none", cursor: "pointer", color: C.dark, fontSize: 18 }}>↗</button>
           </div>
           <button onClick={() => onBookmark(post.id, post.bookmarked)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: post.bookmarked ? C.gold : C.tan }}>
             {post.bookmarked ? "🔖" : "🏷️"}
@@ -943,7 +965,7 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
 
         {post.caption && (
           <p style={{ margin: "0 0 4px", fontFamily: "'Lato',sans-serif", fontSize: 13, color: C.dark, lineHeight: 1.5 }}>
-            <span style={{ fontWeight: 700 }}>{post.profiles?.username} </span>{post.caption}
+            <span style={{ fontWeight: 700 }}>{displayHandle(post.profiles?.username)} </span>{post.caption}
           </p>
         )}
         <p style={{ margin: 0, fontSize: 11, color: C.tan, fontFamily: "'Lato',sans-serif" }}>
@@ -954,11 +976,23 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
           <div style={{ marginTop: 12, borderTop: `1px solid ${C.beige}`, paddingTop: 12 }}>
             {comments.map(c => (
               <div key={c.id} style={{ marginBottom: 8, display: "flex", justifyContent: "space-between", gap: 8 }}>
-                <div>
-                <span style={{ fontWeight: 700, fontSize: 12, color: C.dark, fontFamily: "'Lato',sans-serif" }}>{c.profiles?.username} </span>
-                <span style={{ fontSize: 12, color: C.dark, fontFamily: "'Lato',sans-serif" }}>{c.content}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <button onClick={() => onOpenProfile?.(c.user_id)} style={{ border: "none", background: "none", padding: 0, margin: 0, cursor: "pointer", fontWeight: 700, fontSize: 12, color: C.dark, fontFamily: "'Lato',sans-serif" }}>{displayHandle(c.profiles?.username)}</button>
+                  <span style={{ fontSize: 12, color: C.dark, fontFamily: "'Lato',sans-serif", marginLeft: 4 }}>{c.content}</span>
                 </div>
-                {currentUser?.id === c.user_id && <button onClick={() => handleDeleteComment(c.id)} style={{ border: "none", background: "none", color: C.red, cursor: "pointer", fontSize: 11 }}>Delete</button>}
+                <div style={{ position: "relative", display: "flex", alignItems: "flex-start", gap: 6 }}>
+                  {currentUser?.id === c.user_id && <button onClick={() => handleDeleteComment(c.id)} style={{ border: "none", background: "none", color: C.red, cursor: "pointer", fontSize: 11 }}>Delete</button>}
+                  {currentUser?.id !== c.user_id && (
+                    <>
+                      <button onClick={() => setCommentMenuId(commentMenuId === c.id ? null : c.id)} style={{ border: "none", background: "none", color: C.brown, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>⋯</button>
+                      {commentMenuId === c.id && (
+                        <div style={{ position: "absolute", top: 22, right: 0, minWidth: 130, background: C.white, border: `1px solid ${C.beige}`, borderRadius: 12, boxShadow: `0 8px 24px ${C.shadow}`, overflow: "hidden", zIndex: 4 }}>
+                          <button onClick={() => handleReportComment(c)} style={{ width: "100%", border: "none", background: "none", padding: "10px 12px", textAlign: "left", cursor: "pointer", color: C.red, fontWeight: 700 }}>Report</button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             ))}
             {currentUser && (
@@ -1028,13 +1062,16 @@ const HEADINGS = {
   cultural: { title: "Cultural Diaries", sub: "Stories woven into history" },
 };
 
-function HomePage({ currentUser, profile, setPage, showToast, onOpenProfile, onOpenPost }) {
+function HomePage({ currentUser, profile, currentCountry, setPage, showToast, onOpenProfile, onOpenPost }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState("all");
   const [feedSeason, setFeedSeason] = useState("all");
   const [showFilter, setShowFilter] = useState(false);
-  const heading = HEADINGS[category] || HEADINGS.all;
+  const countryLabel = (currentCountry || profile?.country || "").trim();
+  const heading = category === "all"
+    ? { title: `Moments in ${countryLabel || "your world"}`, sub: countryLabel ? `Diary moments around ${countryLabel}` : HEADINGS.all.sub }
+    : (HEADINGS[category] || HEADINGS.all);
 
   const fetchPosts = useCallback(async () => {
     setLoading(true);
@@ -1045,10 +1082,12 @@ function HomePage({ currentUser, profile, setPage, showToast, onOpenProfile, onO
       .limit(20);
     if (category !== "all") query = query.eq("category", category);
     if (feedSeason !== "all") query = query.eq("season", feedSeason);
+    if (category === "all" && countryLabel) query = query.ilike("location", `%${countryLabel}%`);
     let { data, error } = await query;
     if (error && /season/i.test(error.message || "")) {
       let retry = supabase.from("posts").select("*, profiles(username, avatar_url, full_name)").order("created_at", { ascending: false }).limit(20);
       if (category !== "all") retry = retry.eq("category", category);
+      if (category === "all" && countryLabel) retry = retry.ilike("location", `%${countryLabel}%`);
       const fallback = await retry;
       data = fallback.data;
       error = fallback.error;
@@ -1056,6 +1095,14 @@ function HomePage({ currentUser, profile, setPage, showToast, onOpenProfile, onO
     if (error && /is_hidden/i.test(error.message || "")) {
       let retry = supabase.from("posts").select("*, profiles(username, avatar_url, full_name)").order("created_at", { ascending: false }).limit(20);
       if (category !== "all") retry = retry.eq("category", category);
+      if (feedSeason !== "all") retry = retry.eq("season", feedSeason);
+      if (category === "all" && countryLabel) retry = retry.ilike("location", `%${countryLabel}%`);
+      const fallback = await retry;
+      data = fallback.data;
+      error = fallback.error;
+    }
+    if ((!data || data.length === 0) && category === "all" && countryLabel) {
+      let retry = supabase.from("posts").select("*, profiles(username, avatar_url, full_name)").order("created_at", { ascending: false }).limit(20);
       if (feedSeason !== "all") retry = retry.eq("season", feedSeason);
       const fallback = await retry;
       data = fallback.data;
@@ -1080,7 +1127,7 @@ function HomePage({ currentUser, profile, setPage, showToast, onOpenProfile, onO
       setPosts(data || []);
     }
     setLoading(false);
-  }, [category, feedSeason, currentUser]);
+  }, [category, countryLabel, feedSeason, currentUser]);
 
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
 
@@ -1139,6 +1186,10 @@ function HomePage({ currentUser, profile, setPage, showToast, onOpenProfile, onO
         <div style={{ textAlign: "center", padding: "22px 0 14px", transition: "all 0.4s" }}>
           <h1 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 29, fontWeight: 700, color: C.dark, margin: "0 0 5px", lineHeight: 1.2 }}>{heading.title}</h1>
           <p style={{ fontFamily: "'Playfair Display',Georgia,serif", fontStyle: "italic", fontSize: 13, color: C.brown, margin: 0 }}>{heading.sub}</p>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+          <button onClick={() => setPage("discover")} style={{ background: C.white, border: `1px solid ${C.beige}`, borderRadius: 16, padding: "12px 14px", cursor: "pointer", color: C.dark, fontWeight: 800, boxShadow: `0 6px 16px ${C.shadow}` }}>Discover</button>
+          <button onClick={() => setPage("quotes")} style={{ background: C.white, border: `1px solid ${C.beige}`, borderRadius: 16, padding: "12px 14px", cursor: "pointer", color: C.dark, fontWeight: 800, boxShadow: `0 6px 16px ${C.shadow}` }}>Diary Quotes</button>
         </div>
 
         {/* Stories */}
@@ -1642,7 +1693,7 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
   const hero = posts[0];
 
   return (
-    <div style={{ padding: "56px 16px 100px", background: C.cream, minHeight: "100vh" }}>
+    <div style={{ padding: "56px 16px 100px", background: "transparent", minHeight: "100vh" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
         <h1 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 25, color: C.dark, margin: 0 }}>{mode === "quotes" ? "Discover Diary Quotes" : "Discover"}</h1>
         <div style={{ display: "flex", background: C.white, border: `1px solid ${C.beige}`, borderRadius: 999, padding: 4 }}>
@@ -1740,7 +1791,7 @@ function MemoriesPage({ currentUser, showToast }) {
   }, [currentUser]);
 
   return (
-    <div style={{ padding: "56px 16px 100px", background: C.cream, minHeight: "100vh" }}>
+    <div style={{ padding: "56px 16px 100px", background: "transparent", minHeight: "100vh" }}>
       <h1 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 25, color: C.dark, marginBottom: 4 }}>Memories</h1>
       <p style={{ color: C.brown, fontSize: 13, fontFamily: "'Lato',sans-serif", marginBottom: 22 }}>Your saved moments & journeys</p>
 
@@ -1900,7 +1951,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
   );
 
   return (
-    <div style={{ background: C.cream, minHeight: "100vh", paddingBottom: 100 }}>
+    <div style={{ background: "transparent", minHeight: "100vh", paddingBottom: 100 }}>
       {showAvatarCropper && <ImageCropper image={avatarCropImage} shape="circle" onCrop={handleAvatarCropped} onCancel={() => setShowAvatarCropper(false)} />}
       {/* Cover */}
       <div style={{ height: 198, position: "relative", overflow: "visible", borderRadius: "0 0 34px 34px", boxShadow: `0 12px 30px ${C.shadow}`, marginBottom: 54 }}>
@@ -2069,7 +2120,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
   const emptyCopy = activeTab === "journeys" ? "No journeys shared yet" : activeTab === "quotes" ? "No diary quotes shared yet" : "No public moments yet";
 
   return (
-    <div style={{ background: C.cream, minHeight: "100vh", paddingBottom: 100 }}>
+    <div style={{ background: "transparent", minHeight: "100vh", paddingBottom: 100 }}>
       <PageHeader title="Diary account" subtitle={displayHandle(profile.username)} onBack={() => setPage("home")} />
       <div style={{ height: 210, overflow: "visible", position: "relative", borderRadius: "0 0 34px 34px", boxShadow: `0 12px 30px ${C.shadow}`, marginBottom: 54 }}>
         <img src={profile.cover_url || "https://images.unsplash.com/photo-1528164344705-47542687000d?w=900&q=80"} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "0 0 34px 34px", display: "block" }} />
@@ -2469,7 +2520,7 @@ function DMsPage({ currentUser }) {
   );
 }
 
-function DMsPage2({ currentUser, setPage, showToast, initialUser }) {
+function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile }) {
   const [conversations, setConversations] = useState([]);
   const [active, setActive] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -2558,14 +2609,18 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser }) {
   });
 
   return (
-    <div style={{ background: C.cream, minHeight: "100vh", paddingBottom: active ? 0 : 100 }}>
+    <div style={{ background: "transparent", minHeight: "100vh", paddingBottom: active ? 0 : 100 }}>
       {active ? (
         <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
           <PageHeader
-            title={displayHandle(active.username, "diary")}
+            title={
+              <button onClick={() => onOpenProfile?.(active.id)} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", textAlign: "left", color: C.dark, fontFamily: "'Playfair Display',Georgia,serif", fontSize: 24, lineHeight: 1.1 }}>
+                {displayHandle(active.username, "diary")}
+              </button>
+            }
             subtitle={active.full_name || "Diary message"}
             onBack={() => setActive(null)}
-            right={<Avatar src={active.avatar_url} size={38} active />}
+            right={<button onClick={() => onOpenProfile?.(active.id)} style={{ border: "none", background: "none", padding: 0, cursor: "pointer" }}><Avatar src={active.avatar_url} size={38} active /></button>}
           />
           <div style={{ flex: 1, padding: "16px 14px 90px", overflowY: "auto", background: "linear-gradient(180deg,#FAF7F2,#FFF)" }}>
             {messages.length === 0 && (
@@ -2605,13 +2660,15 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser }) {
             {people.length > 0 && (
               <div style={{ marginTop: 12, background: C.white, borderRadius: 18, overflow: "hidden", boxShadow: `0 4px 18px ${C.shadow}` }}>
                 {people.map(p => (
-                  <button key={p.id} onClick={() => { setSearch(""); setPeople([]); openConvo(p); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 13, border: "none", borderBottom: `1px solid ${C.beige}`, background: C.white, cursor: "pointer", textAlign: "left" }}>
-                    <Avatar src={p.avatar_url} size={44} active />
+                  <div key={p.id} onClick={() => { setSearch(""); setPeople([]); openConvo(p); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 13, borderBottom: `1px solid ${C.beige}`, background: C.white, cursor: "pointer", textAlign: "left", boxSizing: "border-box" }}>
+                    <button onClick={(e) => { e.stopPropagation(); onOpenProfile?.(p.id); }} style={{ border: "none", background: "none", padding: 0, cursor: "pointer" }}><Avatar src={p.avatar_url} size={44} active /></button>
                     <div>
+                      <button onClick={(e) => { e.stopPropagation(); onOpenProfile?.(p.id); }} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
                       <p style={{ margin: 0, color: C.dark, fontWeight: 700 }}>{displayHandle(p.username)}</p>
                       <p style={{ margin: "2px 0 0", color: C.brown, fontSize: 12 }}>{p.full_name || "Diary user"}</p>
+                      </button>
                     </div>
-                  </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -2623,9 +2680,11 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser }) {
               </div>
             ) : filteredConversations.map(c => (
               <div key={c.id} onClick={() => openConvo(c)} style={{ display: "flex", alignItems: "center", gap: 12, background: C.white, borderRadius: 18, padding: "13px", marginBottom: 10, boxShadow: `0 2px 10px ${C.shadow}`, cursor: "pointer" }}>
-                <Avatar src={c.avatar_url} size={52} active />
+                <button onClick={(e) => { e.stopPropagation(); onOpenProfile?.(c.id); }} style={{ border: "none", background: "none", padding: 0, cursor: "pointer" }}><Avatar src={c.avatar_url} size={52} active /></button>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ margin: 0, fontFamily: "'Lato',sans-serif", fontWeight: 800, fontSize: 14, color: C.dark }}>{displayHandle(c.username)}</p>
+                  <button onClick={(e) => { e.stopPropagation(); onOpenProfile?.(c.id); }} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+                    <p style={{ margin: 0, fontFamily: "'Lato',sans-serif", fontWeight: 800, fontSize: 14, color: C.dark }}>{displayHandle(c.username)}</p>
+                  </button>
                   <p style={{ margin: "3px 0 0", fontSize: 12, color: C.brown, fontFamily: "'Lato',sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.lastMsg}</p>
                 </div>
                 <span style={{ color: C.tan, fontSize: 18 }}>{">"}</span>
@@ -2646,6 +2705,7 @@ export default function DiaryApp() {
   const [page, setPage] = useState("home");
   const [currentUser, setCurrentUser] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [currentCountry, setCurrentCountry] = useState(() => localStorage.getItem("diary-current-country") || "");
   const [viewProfileId, setViewProfileId] = useState(null);
   const [dmInitialUser, setDmInitialUser] = useState(null);
   const [focusedPost, setFocusedPost] = useState(null);
@@ -2676,6 +2736,29 @@ export default function DiaryApp() {
       C.cream = "#FAF7F2"; C.beige = "#F0EBE1"; C.tan = "#D4C5B0"; C.brown = "#8B6F5E"; C.dark = "#4A3728"; C.white = "#FFFFFF"; C.shadow = "rgba(74,55,40,0.12)";
     }
   }, [theme]);
+
+  useEffect(() => {
+    const country = (profile?.country || "").trim();
+    if (country) {
+      setCurrentCountry(country);
+      localStorage.setItem("diary-current-country", country);
+    }
+  }, [profile?.country]);
+
+  useEffect(() => {
+    if (currentCountry || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(async ({ coords }) => {
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${coords.latitude}&lon=${coords.longitude}`);
+        const json = await res.json();
+        const country = json?.address?.country;
+        if (country) {
+          setCurrentCountry(country);
+          localStorage.setItem("diary-current-country", country);
+        }
+      } catch {}
+    }, () => {}, { enableHighAccuracy: false, timeout: 8000, maximumAge: 86400000 });
+  }, [currentCountry]);
 
   const handleThemeImage = async (e) => {
     const file = e.target.files?.[0];
@@ -2745,7 +2828,7 @@ export default function DiaryApp() {
   );
 
   return (
-    <div className="diary-paper" style={{ width: "100%", maxWidth: 480, margin: "0 auto", background: C.cream, minHeight: "100vh", position: "relative", overflowX: "hidden", boxShadow: `0 0 0 1px ${C.beige}`, backgroundImage: theme.backgroundImage ? `linear-gradient(rgba(0,0,0,${theme.mode === "dark" || theme.tone === "dark" ? 0.35 : 0.12}),rgba(0,0,0,${theme.mode === "dark" || theme.tone === "dark" ? 0.45 : 0.08})), url(${theme.backgroundImage})` : undefined, backgroundSize: "cover", backgroundAttachment: "fixed" }}>
+    <div className="diary-paper" style={{ width: "100%", maxWidth: 480, margin: "0 auto", background: C.cream, minHeight: "100vh", position: "relative", overflowX: "hidden", boxShadow: `0 0 0 1px ${C.beige}`, backgroundImage: theme.backgroundImage ? `linear-gradient(rgba(0,0,0,${theme.mode === "dark" || theme.tone === "dark" ? 0.35 : 0.12}),rgba(0,0,0,${theme.mode === "dark" || theme.tone === "dark" ? 0.45 : 0.08})), url(${theme.backgroundImage})` : undefined, backgroundSize: "cover", backgroundPosition: "center top", backgroundRepeat: "no-repeat", backgroundAttachment: "fixed" }}>
       <FontLoader />
       <LovableVibeStyle />
 
@@ -2758,7 +2841,7 @@ export default function DiaryApp() {
 
       {screen === "app" && (
         <>
-          {page === "home" && <HomePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} />}
+          {page === "home" && <HomePage currentUser={currentUser} profile={profile} currentCountry={currentCountry} setPage={setPage} showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} />}
           {page === "quotes" && <DiaryQuotesPage showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} setPage={setPage} />}
           {page === "discover" && <DiscoverPage2 showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} setPage={setPage} />}
           {page === "create" && <CreatePage currentUser={currentUser} showToast={showToast} setPage={setPage} />}
@@ -2768,7 +2851,7 @@ export default function DiaryApp() {
           {page === "settings" && <SettingsPage onLogout={handleLogout} setPage={setPage} showToast={showToast} currentUser={currentUser} profile={profile} onProfileUpdated={setProfile} theme={theme} setTheme={setTheme} onThemeImage={handleThemeImage} />}
           {page === "adminReports" && <AdminReportsPage setPage={setPage} showToast={showToast} />}
           {page === "notifications" && <NotificationsPage currentUser={currentUser} setPage={setPage} />}
-          {page === "dms" && <DMsPage2 currentUser={currentUser} setPage={setPage} showToast={showToast} initialUser={dmInitialUser} />}
+          {page === "dms" && <DMsPage2 currentUser={currentUser} setPage={setPage} showToast={showToast} initialUser={dmInitialUser} onOpenProfile={openProfile} />}
           {page === "postViewer" && <PostViewerPage post={focusedPost} setPage={setPage} showToast={showToast} />}
           {showNav && <BottomNav2 page={page} setPage={setPage} />}
         </>
