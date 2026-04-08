@@ -239,7 +239,6 @@ function PageHeader({ title, subtitle, onBack, right }) {
         </div>
         {right}
       </div>
-      <FollowListSheet open={followSheet.open} title={followSheet.title} users={followSheet.users} onClose={() => setFollowSheet({ open: false, title: "", users: [] })} onOpenProfile={onOpenProfile} />
     </div>
   );
 }
@@ -1630,29 +1629,6 @@ function DiscoverPage({ showToast, onOpenProfile }) {
           </div>
         </div>
       )}
-      {activeIndex != null && saved[activeIndex] && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.92)", zIndex: 9999, display: "flex", flexDirection: "column" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px", color: C.white }}>
-            <div>
-              <p style={{ margin: 0, fontWeight: 800 }}>{displayHandle(saved[activeIndex].profiles?.username || "diary")}</p>
-              <p style={{ margin: "3px 0 0", fontSize: 12, opacity: 0.88 }}>{new Date(saved[activeIndex].created_at).toLocaleString()}</p>
-            </div>
-            <button onClick={() => setActiveIndex(null)} style={{ border: "none", background: "none", color: C.white, fontSize: 22, cursor: "pointer" }}>✕</button>
-          </div>
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: 16 }}>
-            {activeIndex > 0 && <button onClick={() => setActiveIndex(i => i - 1)} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", border: "none", background: "rgba(255,255,255,.18)", color: C.white, width: 36, height: 36, borderRadius: "50%", cursor: "pointer" }}>‹</button>}
-            <img src={saved[activeIndex].image_url} style={{ maxWidth: "100%", maxHeight: "74vh", objectFit: "contain", borderRadius: 18 }} />
-            {activeIndex < saved.length - 1 && <button onClick={() => setActiveIndex(i => i + 1)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", border: "none", background: "rgba(255,255,255,.18)", color: C.white, width: 36, height: 36, borderRadius: "50%", cursor: "pointer" }}>›</button>}
-          </div>
-          <div style={{ padding: "0 18px 22px", color: C.white }}>
-            <p style={{ margin: "0 0 8px", lineHeight: 1.5 }}>{saved[activeIndex].caption || "Saved memory"}</p>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => onOpenPost?.(saved[activeIndex])} style={{ border: "none", borderRadius: 999, padding: "10px 14px", cursor: "pointer", background: C.white, color: C.dark, fontWeight: 800 }}>Open Diary</button>
-              <button onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/?post=${saved[activeIndex].id}`).then(() => showToast("Post link copied!"))} style={{ border: "1px solid rgba(255,255,255,.35)", borderRadius: 999, padding: "10px 14px", cursor: "pointer", background: "transparent", color: C.white, fontWeight: 800 }}>Share</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1842,6 +1818,11 @@ function MemoriesPage({ currentUser, showToast, onOpenPost }) {
     })();
   }, [currentUser]);
 
+  useEffect(() => {
+    if (activeIndex == null || !saved[activeIndex]) return;
+    setSeenIds(prev => prev.includes(saved[activeIndex].id) ? prev : [...prev, saved[activeIndex].id]);
+  }, [activeIndex, saved]);
+
   return (
     <div style={{ padding: "56px 16px 100px", background: "transparent", minHeight: "100vh" }}>
       <h1 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 25, color: C.dark, marginBottom: 4 }}>Memories</h1>
@@ -1871,6 +1852,30 @@ function MemoriesPage({ currentUser, showToast, onOpenPost }) {
             ))}
           </div>
         </>
+      )}
+      {activeIndex != null && saved[activeIndex] && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.92)", zIndex: 9999, display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px", color: C.white }}>
+            <div>
+              <p style={{ margin: 0, fontWeight: 800 }}>{displayHandle(saved[activeIndex].profiles?.username || "diary")}</p>
+              <p style={{ margin: "3px 0 0", fontSize: 12, opacity: 0.88 }}>{new Date(saved[activeIndex].created_at).toLocaleString()}</p>
+            </div>
+            <button onClick={() => setActiveIndex(null)} style={{ border: "none", background: "none", color: C.white, fontSize: 22, cursor: "pointer" }}>✕</button>
+          </div>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: 16 }}>
+            {activeIndex > 0 && <button onClick={() => setActiveIndex(i => i - 1)} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", border: "none", background: "rgba(255,255,255,.18)", color: C.white, width: 36, height: 36, borderRadius: "50%", cursor: "pointer" }}>‹</button>}
+            <img src={saved[activeIndex].image_url} style={{ maxWidth: "100%", maxHeight: "74vh", objectFit: "contain", borderRadius: 18 }} />
+            {activeIndex < saved.length - 1 && <button onClick={() => setActiveIndex(i => i + 1)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", border: "none", background: "rgba(255,255,255,.18)", color: C.white, width: 36, height: 36, borderRadius: "50%", cursor: "pointer" }}>›</button>}
+          </div>
+          <div style={{ padding: "0 18px 22px", color: C.white }}>
+            <p style={{ margin: "0 0 8px", lineHeight: 1.5 }}>{saved[activeIndex].caption || "Saved memory"}</p>
+            <p style={{ margin: "0 0 10px", fontSize: 12, opacity: 0.8 }}>Seen by you</p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => onOpenPost?.(saved[activeIndex])} style={{ border: "none", borderRadius: 999, padding: "10px 14px", cursor: "pointer", background: C.white, color: C.dark, fontWeight: 800 }}>Open Diary</button>
+              <button onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/?post=${saved[activeIndex].id}`).then(() => showToast("Post link copied!"))} style={{ border: "1px solid rgba(255,255,255,.35)", borderRadius: 999, padding: "10px 14px", cursor: "pointer", background: "transparent", color: C.white, fontWeight: 800 }}>Share</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1954,11 +1959,6 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
     const { data: users } = await supabase.from("profiles").select("id, username, full_name, avatar_url").in("id", ids);
     setFollowSheet({ open: true, title: kind === "followers" ? "Followers" : "Following", users: users || [] });
   };
-
-  useEffect(() => {
-    if (activeIndex == null || !saved[activeIndex]) return;
-    setSeenIds(prev => prev.includes(saved[activeIndex].id) ? prev : [...prev, saved[activeIndex].id]);
-  }, [activeIndex, saved]);
 
   const handleAvatarPick = (e) => {
     const file = e.target.files[0];
@@ -2068,6 +2068,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
             <Input placeholder="@username" value={form.username} onChange={e => setForm(p => ({ ...p, username: e.target.value.replace(/^@+/, "").replace(/\s/g, "").toLowerCase() }))} />
             <Input placeholder="Bio" value={form.bio} onChange={e => setForm(p => ({ ...p, bio: e.target.value }))} multiline />
             <Input placeholder="📍 Currently in..." value={form.location} onChange={e => setForm(p => ({ ...p, location: e.target.value }))} />
+            <Input placeholder="🔗 Website" value={form.website} onChange={e => setForm(p => ({ ...p, website: e.target.value }))} />
           </div>
         ) : (
           <>
@@ -2076,6 +2077,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
             {profileData?.bio && <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 13, color: C.dark, margin: "0 0 4px", lineHeight: 1.5 }}>{profileData.bio}</p>}
             {profile?.location && <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 14px" }}>📍 Currently in: {profile.location}</p>}
             {!profile?.location && profileData?.location && <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 14px" }}>Currently in: {profileData.location}</p>}
+            {profileData?.website && <a href={/^https?:\/\//.test(profileData.website) ? profileData.website : `https://${profileData.website}`} target="_blank" rel="noreferrer" style={{ display: "inline-block", margin: "0 0 14px", color: C.pink, textDecoration: "none", fontWeight: 700 }}>🔗 {profileData.website}</a>}
           </>
         )}
 
@@ -2124,6 +2126,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
           )}
         </div>
       </div>
+      <FollowListSheet open={followSheet.open} title={followSheet.title} users={followSheet.users} onClose={() => setFollowSheet({ open: false, title: "", users: [] })} onOpenProfile={onOpenProfile} />
     </div>
   );
 }
@@ -2422,7 +2425,7 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
     else if (label === "Account Privacy") togglePrivacy();
     else if (label === "Diary Authority Queue") setPage("adminReports");
     else if (label === "Notifications") { setNotifications(v => !v); showToast(`Notifications ${notifications ? "off" : "on"}`); }
-    else showToast(`${label} coming soon`);
+    else showToast("This feature is being polished — we’ll notify you soon.");
   };
   const sections = [
     { title: "Account", items: [{ icon: "✏️", label: "Edit Profile" }, { icon: "🔒", label: "Change Password" }, { icon: "🔔", label: "Notifications" }] },
@@ -2626,6 +2629,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
   const [search, setSearch] = useState("");
   const [people, setPeople] = useState([]);
   const [filter, setFilter] = useState("all");
+  const [selectedMessage, setSelectedMessage] = useState(null);
 
   const loadConversations = useCallback(async () => {
     if (!currentUser) return;
@@ -2700,6 +2704,19 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
     loadConversations();
   };
 
+  const unsendMessage = async () => {
+    if (!selectedMessage || selectedMessage.sender_id !== currentUser?.id) return;
+    const { error } = await supabase.from("messages").delete().eq("id", selectedMessage.id).eq("sender_id", currentUser.id);
+    if (error) {
+      showToast?.(error.message || "Could not unsend message", "error");
+    } else {
+      setMessages(prev => prev.filter(m => m.id !== selectedMessage.id));
+      loadConversations();
+      showToast?.("Message unsent");
+    }
+    setSelectedMessage(null);
+  };
+
   const filteredConversations = conversations.filter((c, index) => {
     if (filter === "all") return true;
     if (filter === "unread") return index % 2 === 0;
@@ -2730,13 +2747,13 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
             )}
             {messages.map(m => (
               <div key={m.id} style={{ display: "flex", justifyContent: m.sender_id === currentUser.id ? "flex-end" : "flex-start", marginBottom: 9 }}>
-                <div style={{
+                <button onClick={() => m.sender_id === currentUser.id && setSelectedMessage(m)} style={{
                   background: m.sender_id === currentUser.id ? `linear-gradient(135deg,${C.pink},${C.dark})` : C.white,
                   color: m.sender_id === currentUser.id ? C.white : C.dark,
                   borderRadius: m.sender_id === currentUser.id ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
                   padding: "10px 14px", maxWidth: "76%", fontFamily: "'Lato',sans-serif", fontSize: 14,
-                  boxShadow: `0 4px 14px ${C.shadow}`,
-                }}>{m.content}</div>
+                  boxShadow: `0 4px 14px ${C.shadow}`, border: "none", cursor: m.sender_id === currentUser.id ? "pointer" : "default", textAlign: "left",
+                }}>{m.content}</button>
               </div>
             ))}
           </div>
@@ -2790,6 +2807,20 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
             ))}
           </div>
         </>
+      )}
+      {selectedMessage && (
+        <div onClick={() => setSelectedMessage(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", zIndex: 9999, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: "100%", maxWidth: 480, background: C.white, borderRadius: "24px 24px 0 0", padding: "12px 16px 24px", boxShadow: `0 -14px 40px ${C.shadow}` }}>
+            <div style={{ width: 42, height: 4, borderRadius: 999, background: C.tan, margin: "0 auto 12px", opacity: 0.7 }} />
+            <h3 style={{ margin: "0 0 10px", fontFamily: "'Playfair Display',Georgia,serif", color: C.dark }}>Message options</h3>
+            {selectedMessage.sender_id === currentUser?.id ? (
+              <button onClick={unsendMessage} style={{ width: "100%", textAlign: "left", border: "none", background: "none", padding: "13px 2px", color: C.red, fontWeight: 800, cursor: "pointer" }}>Unsend message</button>
+            ) : (
+              <button onClick={() => { setSelectedMessage(null); showToast?.("Report tools are being polished — we’ll notify you soon."); }} style={{ width: "100%", textAlign: "left", border: "none", background: "none", padding: "13px 2px", color: C.dark, fontWeight: 700, cursor: "pointer" }}>Report message</button>
+            )}
+            <button onClick={() => setSelectedMessage(null)} style={{ width: "100%", textAlign: "left", border: "none", background: "none", padding: "13px 2px", color: C.brown, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+          </div>
+        </div>
       )}
     </div>
   );
