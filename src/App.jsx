@@ -243,6 +243,207 @@ function PageHeader({ title, subtitle, onBack, right }) {
   );
 }
 
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const normalizeOverlayPoint = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? clamp(parsed, 0.08, 0.92) : fallback;
+};
+
+const EDITOR_FONTS = {
+  clean: "'Lato',sans-serif",
+  typewriter: "'Courier New',monospace",
+  elegant: "'Playfair Display',Georgia,serif",
+};
+
+function DiaryMetadataLine({ post, style = {} }) {
+  const bits = [post?.camera_gear, post?.lens, post?.edit_software || post?.film_simulation].filter(Boolean);
+  if (!bits.length) return null;
+  return (
+    <p style={{ margin: "8px 0 0", color: C.tan, fontSize: 11, letterSpacing: ".2px", fontFamily: "'Lato',sans-serif", ...style }}>
+      {bits.join(" • ")}
+    </p>
+  );
+}
+
+function DiaryEntryVisual({ post = {}, aspectRatio = "4/3", radius = 0, maxHeight, onClick, objectFit = "cover" }) {
+  const overlayText = String(post.overlay_text || "").trim();
+  const overlayX = normalizeOverlayPoint(post.overlay_x, 0.5);
+  const overlayY = normalizeOverlayPoint(post.overlay_y, 0.78);
+  const fontFamily = EDITOR_FONTS[post.overlay_font] || EDITOR_FONTS.elegant;
+  const frameStyle = {
+    width: "100%",
+    aspectRatio,
+    overflow: "hidden",
+    position: "relative",
+    borderRadius: radius,
+    cursor: onClick ? "pointer" : "default",
+    background: post.image_url ? C.beige : `linear-gradient(160deg, ${C.white}, ${C.beige})`,
+    maxHeight,
+  };
+
+  return (
+    <div onClick={onClick} style={frameStyle}>
+      {post.image_url ? (
+        <img
+          src={post.image_url}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit,
+            display: "block",
+            filter: FILTERS[post.filter_type || "none"] || "none",
+          }}
+        />
+      ) : (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 26 }}>
+          <p style={{ margin: 0, color: C.dark, fontFamily: fontFamily, fontSize: 26, lineHeight: 1.5, textAlign: "center", maxWidth: "86%" }}>
+            {post.caption || "Diary quote"}
+          </p>
+        </div>
+      )}
+      {overlayText && (
+        <div
+          style={{
+            position: "absolute",
+            left: `${overlayX * 100}%`,
+            top: `${overlayY * 100}%`,
+            transform: "translate(-50%, -50%)",
+            padding: "8px 12px",
+            maxWidth: "78%",
+            borderRadius: 14,
+            background: "rgba(0,0,0,.28)",
+            color: C.white,
+            fontFamily,
+            fontSize: 18,
+            lineHeight: 1.4,
+            textAlign: "center",
+            textShadow: "0 2px 8px rgba(0,0,0,.32)",
+            boxShadow: "0 8px 20px rgba(0,0,0,.18)",
+            backdropFilter: "blur(6px)",
+            pointerEvents: "none",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {overlayText}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CanvasOverlayEditor({ preview, filterType, rotation, overlay, setOverlay, postMode, caption }) {
+  const frameRef = useRef(null);
+  const dragRef = useRef(false);
+
+  const moveOverlay = useCallback((clientX, clientY) => {
+    const rect = frameRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = clamp((clientX - rect.left) / rect.width, 0.08, 0.92);
+    const y = clamp((clientY - rect.top) / rect.height, 0.08, 0.92);
+    setOverlay(prev => ({ ...prev, x, y }));
+  }, [setOverlay]);
+
+  useEffect(() => {
+    const handleMove = (event) => {
+      if (!dragRef.current) return;
+      moveOverlay(event.clientX, event.clientY);
+    };
+    const handleUp = () => { dragRef.current = false; };
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+  }, [moveOverlay]);
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div
+        ref={frameRef}
+        onClick={(event) => overlay.text.trim() && moveOverlay(event.clientX, event.clientY)}
+        style={{
+          width: "100%",
+          aspectRatio: postMode === "quote" ? "4/3" : "1",
+          background: C.beige,
+          borderRadius: 20,
+          border: `2px dashed ${C.tan}`,
+          overflow: "hidden",
+          position: "relative",
+          boxShadow: `0 8px 24px ${C.shadow}`,
+        }}
+      >
+        {preview ? (
+          <img
+            src={preview}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+              filter: FILTERS[filterType] || "none",
+              transform: `rotate(${rotation}deg)`,
+              transition: "transform .25s ease, filter .25s ease",
+            }}
+          />
+        ) : (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 28, textAlign: "center" }}>
+            <div>
+              <span style={{ fontSize: 46 }}>📷</span>
+              <p style={{ fontFamily: "'Lato',sans-serif", color: C.brown, fontSize: 14, marginTop: 10 }}>
+                {postMode === "quote" ? "Tap to add an optional image" : "Tap to upload your moment"}
+              </p>
+              <p style={{ fontFamily: "'Lato',sans-serif", color: C.tan, fontSize: 11, margin: 0 }}>JPG, PNG up to 20MB</p>
+            </div>
+          </div>
+        )}
+        {!preview && postMode === "quote" && caption.trim() && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", padding: 26, pointerEvents: "none" }}>
+            <p style={{ margin: 0, color: C.dark, fontFamily: "'Playfair Display',Georgia,serif", fontSize: 24, lineHeight: 1.45, textAlign: "center", maxWidth: "86%" }}>
+              {caption}
+            </p>
+          </div>
+        )}
+        {overlay.text.trim() && (
+          <div
+            onMouseDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              dragRef.current = true;
+            }}
+            style={{
+              position: "absolute",
+              left: `${overlay.x * 100}%`,
+              top: `${overlay.y * 100}%`,
+              transform: "translate(-50%, -50%)",
+              padding: "8px 12px",
+              maxWidth: "76%",
+              borderRadius: 14,
+              background: "rgba(0,0,0,.28)",
+              color: C.white,
+              fontFamily: EDITOR_FONTS[overlay.font] || EDITOR_FONTS.elegant,
+              fontSize: 18,
+              lineHeight: 1.4,
+              textAlign: "center",
+              textShadow: "0 2px 8px rgba(0,0,0,.32)",
+              boxShadow: "0 8px 20px rgba(0,0,0,.18)",
+              backdropFilter: "blur(6px)",
+              cursor: "grab",
+              userSelect: "none",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            {overlay.text}
+          </div>
+        )}
+      </div>
+      <p style={{ margin: "8px 0 0", color: C.brown, fontSize: 11, fontFamily: "'Lato',sans-serif" }}>
+        Add overlay text, then click or drag it anywhere in the frame.
+      </p>
+    </div>
+  );
+}
+
 function SakuraStorm({ onDone }) {
   useEffect(() => { const t = setTimeout(onDone, 2100); return () => clearTimeout(t); }, [onDone]);
   return (
@@ -1014,8 +1215,8 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
       </div>
 
       {/* Image */}
-      <div onDoubleClick={handleLike} style={{ width: "100%", aspectRatio: "4/3", overflow: "hidden", cursor: "pointer" }}>
-        <img src={post.image_url} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", filter: FILTERS[post.filter_type || "none"] || "none" }} />
+      <div onDoubleClick={handleLike}>
+        <DiaryEntryVisual post={post} aspectRatio="4/3" onClick={() => setShowFullDiary(true)} />
       </div>
 
       {/* Actions */}
@@ -1041,6 +1242,7 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
             <span style={{ fontWeight: 700 }}>{displayHandle(post.profiles?.username)} </span>{post.caption}
           </p>
         )}
+        <DiaryMetadataLine post={post} />
         <p style={{ margin: 0, fontSize: 11, color: C.tan, fontFamily: "'Lato',sans-serif" }}>
           {new Date(post.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
         </p>
@@ -1111,10 +1313,13 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
         <div style={{ position: "fixed", inset: 0, background: C.dark, zIndex: 9999, display: "flex", flexDirection: "column" }}>
           <PageHeader title="Full Diary" subtitle={post.location || post.profiles?.username || "Diary moment"} onBack={() => setShowFullDiary(false)} />
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: C.dark }}>
-            <img src={post.image_url} style={{ width: "100%", maxHeight: "78vh", objectFit: "contain" }} />
+            <div style={{ width: "100%", maxWidth: 460, padding: 16, boxSizing: "border-box" }}>
+              <DiaryEntryVisual post={post} aspectRatio="4/3" radius={22} objectFit="contain" />
+            </div>
           </div>
           <div style={{ background: C.white, padding: 16 }}>
             <p style={{ margin: 0, color: C.dark, fontFamily: "'Lato',sans-serif", lineHeight: 1.5 }}>{post.caption || "A Diary moment"}</p>
+            <DiaryMetadataLine post={post} />
           </div>
         </div>
       )}
@@ -1299,10 +1504,13 @@ function HomePage({ currentUser, profile, currentCountry, setPage, showToast, on
           <div onClick={() => onOpenPost?.(posts[0])} className="ios-card" style={{ background: C.white, borderRadius: 22, padding: 14, marginBottom: 18, boxShadow: `0 10px 30px ${C.shadow}`, cursor: "pointer" }}>
             <p style={{ margin: "0 0 8px", color: C.pink, fontWeight: 900, fontSize: 11, letterSpacing: 1, textTransform: "uppercase" }}>Today's Moment</p>
             <div style={{ display: "grid", gridTemplateColumns: "90px 1fr", gap: 12, alignItems: "center" }}>
-              <img src={posts[0].image_url} style={{ width: 90, height: 90, objectFit: "cover", borderRadius: 18 }} />
+              <div style={{ width: 90 }}>
+                <DiaryEntryVisual post={posts[0]} aspectRatio="1/1" radius={18} />
+              </div>
               <div>
                 <h3 style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark }}>A Diary worth opening</h3>
                 <p style={{ margin: "5px 0 0", color: C.brown, fontSize: 12, lineHeight: 1.45 }}>{posts[0].location || "Somewhere beautiful"} · {posts[0].caption || "A real moment from the feed"}</p>
+                <DiaryMetadataLine post={posts[0]} />
               </div>
             </div>
           </div>
@@ -1385,10 +1593,11 @@ function PostViewerPage({ post, setPage, showToast }) {
       <PageHeader title="View full Diary" subtitle={post.location_name || post.location || displayHandle(post.profiles?.username, "diary")} onBack={() => setPage("home")} />
       <div style={{ padding: 16 }}>
         <div style={{ background: C.white, borderRadius: 24, overflow: "hidden", boxShadow: `0 12px 36px ${C.shadow}` }}>
-          {post.image_url && <img src={post.image_url} style={{ width: "100%", maxHeight: "58vh", objectFit: "cover", display: "block", filter: FILTERS[post.filter_type || "none"] || "none" }} />}
+          <DiaryEntryVisual post={post} aspectRatio="4/5" objectFit="contain" />
           <div style={{ padding: 16 }}>
             <p style={{ margin: "0 0 8px", fontWeight: 800, color: C.dark }}>{displayHandle(post.profiles?.username || post.username || "diary")}</p>
             <p style={{ margin: "0 0 10px", color: C.dark, fontSize: 14, lineHeight: 1.6 }}>{post.caption || "A Diary moment."}</p>
+            <DiaryMetadataLine post={post} style={{ marginBottom: 10 }} />
             {post.location && <p style={{ margin: "0 0 12px", color: C.brown, fontSize: 12 }}>📍 {post.location}</p>}
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/?post=${post.id}`).then(() => showToast("Post link copied!"))} style={{ border: `1px solid ${C.beige}`, borderRadius: 999, background: C.white, padding: "9px 14px", cursor: "pointer" }}>🔄 Share</button>
@@ -1413,7 +1622,8 @@ function QuoteCard({ post, showToast, onOpenProfile, onOpenPost }) {
       </div>
       <div onClick={() => onOpenPost?.(post)} style={{ cursor: "pointer" }}>
         <p style={{ margin: "0 0 12px", fontFamily: "'Playfair Display',Georgia,serif", fontSize: 22, lineHeight: 1.45, color: C.dark }}>{post.caption}</p>
-        {post.image_url && <img src={post.image_url} style={{ width: "100%", aspectRatio: "4/3", objectFit: "cover", borderRadius: 18, marginBottom: 12, filter: FILTERS[post.filter_type || "none"] || "none" }} />}
+        {(post.image_url || post.overlay_text) && <DiaryEntryVisual post={post} aspectRatio="4/3" radius={18} />}
+        <DiaryMetadataLine post={post} />
       </div>
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={() => showToast("Diary liked it")} style={{ border: "none", background: "none", cursor: "pointer", color: C.dark }}>❤️</button>
@@ -1441,6 +1651,10 @@ function CreatePage({ currentUser, showToast, setPage }) {
   const [loading, setLoading] = useState(false);
   const [cropImage, setCropImage] = useState(null);
   const [showCropper, setShowCropper] = useState(false);
+  const [overlay, setOverlay] = useState({ text: "", font: "elegant", x: 0.5, y: 0.78 });
+  const [cameraGear, setCameraGear] = useState("");
+  const [lens, setLens] = useState("");
+  const [editSoftware, setEditSoftware] = useState("");
   const fileRef = useRef();
 
   const pickImage = (e) => {
@@ -1513,9 +1727,16 @@ function CreatePage({ currentUser, showToast, setPage }) {
         category: postMode === "quote" ? "quote" : category,
         season,
         filter_type: filterType,
+        overlay_text: overlay.text.trim() || null,
+        overlay_x: overlay.text.trim() ? overlay.x : null,
+        overlay_y: overlay.text.trim() ? overlay.y : null,
+        overlay_font: overlay.text.trim() ? overlay.font : null,
+        camera_gear: cameraGear.trim() || null,
+        lens: lens.trim() || null,
+        edit_software: editSoftware.trim() || null,
       };
       let { error: postErr } = await supabase.from("posts").insert(postPayload);
-      if (postErr && /location_name|lat|lng|season|filter_type|journey_title/i.test(postErr.message || "")) {
+      if (postErr && /location_name|lat|lng|season|filter_type|journey_title|overlay_|camera_gear|lens|edit_software/i.test(postErr.message || "")) {
         const fallback = { user_id: currentUser.id, image_url: publicUrl, caption: caption.trim(), location: location.trim(), category: postMode === "quote" ? "quote" : category };
         const retry = await supabase.from("posts").insert(fallback);
         postErr = retry.error;
@@ -1525,6 +1746,8 @@ function CreatePage({ currentUser, showToast, setPage }) {
 
       showToast(postMode === "quote" ? "Diary quote shared! ✨" : "Moment shared! 🌸");
       setCaption(""); setLocation(""); setArcTitle(""); setImageFile(null); setPreview(null); setSeason("spring"); setFilterType("warm"); setRotation(0);
+      setOverlay({ text: "", font: "elegant", x: 0.5, y: 0.78 });
+      setCameraGear(""); setLens(""); setEditSoftware("");
       setPage(postMode === "quote" ? "quotes" : "home");
     } catch (err) {
       showToast(err.message || "Failed to post", "error");
@@ -1544,15 +1767,18 @@ function CreatePage({ currentUser, showToast, setPage }) {
       </div>
 
       {/* Upload area */}
-      <div onClick={() => fileRef.current.click()} style={{ width: "100%", aspectRatio: postMode === "quote" ? "4/3" : "1", background: C.beige, borderRadius: 20, border: `2px dashed ${C.tan}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", marginBottom: 18, overflow: "hidden" }}>
-        {preview ? <img src={preview} style={{ width: "100%", height: "100%", objectFit: "cover", filter: FILTERS[filterType] || "none", transform: `rotate(${rotation}deg)`, transition: "transform .25s ease, filter .25s ease" }} /> : (
-          <>
-            <span style={{ fontSize: 46 }}>📷</span>
-            <p style={{ fontFamily: "'Lato',sans-serif", color: C.brown, fontSize: 14, marginTop: 10 }}>{postMode === "quote" ? "Tap to add an optional image" : "Tap to upload your moment"}</p>
-            <p style={{ fontFamily: "'Lato',sans-serif", color: C.tan, fontSize: 11, margin: 0 }}>JPG, PNG up to 20MB</p>
-          </>
-        )}
-      </div>
+      <CanvasOverlayEditor
+        preview={preview}
+        filterType={filterType}
+        rotation={rotation}
+        overlay={overlay}
+        setOverlay={setOverlay}
+        postMode={postMode}
+        caption={caption}
+      />
+      <button onClick={() => fileRef.current.click()} style={{ width: "100%", marginTop: -6, marginBottom: 16, background: C.white, border: `1.5px solid ${C.tan}`, borderRadius: 14, padding: "12px 14px", cursor: "pointer", color: C.dark, fontWeight: 800, fontFamily: "'Lato',sans-serif" }}>
+        {preview ? "Change image" : postMode === "quote" ? "Add optional image" : "Upload image"}
+      </button>
       <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={pickImage} />
       {preview && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, margin: "-6px 0 18px" }}>
@@ -1561,11 +1787,43 @@ function CreatePage({ currentUser, showToast, setPage }) {
         </div>
       )}
 
+      <div style={{ background: C.white, borderRadius: 18, padding: 14, boxShadow: `0 8px 24px ${C.shadow}`, marginBottom: 16 }}>
+        <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 11, color: C.brown, margin: "0 0 8px", fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase" }}>Canvas editor</p>
+        <Input placeholder="Overlay text (optional)" value={overlay.text} onChange={e => setOverlay(prev => ({ ...prev, text: e.target.value }))} style={{ marginBottom: 10 }} />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+          {Object.entries(EDITOR_FONTS).map(([key, fontFamily]) => (
+            <button
+              key={key}
+              onClick={() => setOverlay(prev => ({ ...prev, font: key }))}
+              style={{
+                background: overlay.font === key ? C.dark : C.white,
+                color: overlay.font === key ? C.white : C.dark,
+                border: `1.5px solid ${overlay.font === key ? C.dark : C.tan}`,
+                borderRadius: 14,
+                padding: "10px 8px",
+                cursor: "pointer",
+                fontWeight: 700,
+                fontFamily,
+              }}
+            >
+              {key === "clean" ? "Clean" : key === "typewriter" ? "Typewriter" : "Elegant"}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <Input placeholder={postMode === "quote" ? "Write your diary quote..." : "Write your moment... what does this place feel like?"} value={caption} onChange={e => setCaption(e.target.value)} multiline style={{ marginBottom: 13 }} />
       <Input placeholder="📍 Add location" value={location} onChange={e => setLocation(e.target.value)} style={{ marginBottom: 13 }} />
       <Input placeholder="📖 Add to an Arc (optional)" value={arcTitle} onChange={e => setArcTitle(e.target.value)} style={{ marginBottom: 13 }} />
 
       <p style={{ margin: "-5px 0 13px", color: C.brown, fontSize: 11, fontFamily: "'Lato',sans-serif" }}>Location is required for every Diary moment and powers your Travel Map.</p>
+
+      <div style={{ background: C.white, borderRadius: 18, padding: 14, boxShadow: `0 8px 24px ${C.shadow}`, marginBottom: 18 }}>
+        <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 11, color: C.brown, margin: "0 0 8px", fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase" }}>Camera placard</p>
+        <Input placeholder="Camera gear (optional)" value={cameraGear} onChange={e => setCameraGear(e.target.value)} style={{ marginBottom: 10 }} />
+        <Input placeholder="Lens (optional)" value={lens} onChange={e => setLens(e.target.value)} style={{ marginBottom: 10 }} />
+        <Input placeholder="Film simulation / edit software (optional)" value={editSoftware} onChange={e => setEditSoftware(e.target.value)} />
+      </div>
 
       {/* Category */}
       <div style={{ marginBottom: 20 }}>
@@ -2092,11 +2350,12 @@ function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showT
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: 12 }}>
         {index > 0 && <button onClick={() => setIndex((value) => value - 1)} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", border: "none", width: 38, height: 38, borderRadius: "50%", background: "rgba(255,255,255,.16)", color: C.white, cursor: "pointer" }}>‹</button>}
         <div style={{ width: "100%", maxWidth: 430, position: "relative" }}>
-          <img src={story.image_url} style={{ width: "100%", maxHeight: "72vh", objectFit: "contain", borderRadius: 24, boxShadow: "0 12px 40px rgba(0,0,0,.35)" }} />
+          <DiaryEntryVisual post={story} aspectRatio="4/5" radius={24} objectFit="contain" />
           {story.caption && (
             <div style={{ position: "absolute", left: 18, right: 18, bottom: 18, background: "linear-gradient(to top, rgba(0,0,0,.68), rgba(0,0,0,.12))", borderRadius: 16, padding: 14 }}>
               <p style={{ margin: "0 0 6px", color: C.white, lineHeight: 1.5 }}>{story.caption}</p>
               <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,.82)" }}>{story.location || story.location_name || "Diary memory"}</p>
+              <DiaryMetadataLine post={story} style={{ color: "rgba(255,255,255,.76)", marginTop: 8 }} />
             </div>
           )}
         </div>
@@ -2187,10 +2446,11 @@ function ArcShelf({ posts = [], title = "Personal Lore", onOpenPost }) {
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: 16 }}>
             {entryIndex > 0 && <button onClick={() => setEntryIndex(i => i - 1)} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", width: 38, height: 38, borderRadius: "50%", border: "none", background: "rgba(255,255,255,.18)", color: C.white, cursor: "pointer" }}>‹</button>}
             <div style={{ width: "100%", maxWidth: 420, background: "rgba(255,255,255,.06)", borderRadius: 24, overflow: "hidden" }}>
-              {activeArc.entries[entryIndex].image_url && <img src={activeArc.entries[entryIndex].image_url} style={{ width: "100%", maxHeight: "64vh", objectFit: "cover" }} />}
+              <DiaryEntryVisual post={activeArc.entries[entryIndex]} aspectRatio="4/5" objectFit="contain" />
               <div style={{ padding: 16, color: C.white }}>
                 <p style={{ margin: "0 0 8px", fontFamily: "'Playfair Display',Georgia,serif", fontSize: 22 }}>{activeArc.entries[entryIndex].caption || "A quiet page from this arc."}</p>
                 <p style={{ margin: 0, opacity: 0.8, fontSize: 12 }}>{activeArc.entries[entryIndex].location || activeArc.title}</p>
+                <DiaryMetadataLine post={activeArc.entries[entryIndex]} style={{ color: "rgba(255,255,255,.72)" }} />
               </div>
             </div>
             {entryIndex < activeArc.entries.length - 1 && <button onClick={() => setEntryIndex(i => i + 1)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", width: 38, height: 38, borderRadius: "50%", border: "none", background: "rgba(255,255,255,.18)", color: C.white, cursor: "pointer" }}>›</button>}
@@ -2294,11 +2554,14 @@ function MemoriesPage({ currentUser, showToast, onOpenPost, onOpenProfile, setPa
           </div>
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: 16 }}>
             {activeIndex > 0 && <button onClick={() => setActiveIndex(i => i - 1)} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", border: "none", background: "rgba(255,255,255,.18)", color: C.white, width: 36, height: 36, borderRadius: "50%", cursor: "pointer" }}>‹</button>}
-            <img src={saved[activeIndex].image_url} style={{ maxWidth: "100%", maxHeight: "74vh", objectFit: "contain", borderRadius: 18 }} />
+            <div style={{ width: "100%", maxWidth: 430 }}>
+              <DiaryEntryVisual post={saved[activeIndex]} aspectRatio="4/5" radius={18} objectFit="contain" />
+            </div>
             {activeIndex < saved.length - 1 && <button onClick={() => setActiveIndex(i => i + 1)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", border: "none", background: "rgba(255,255,255,.18)", color: C.white, width: 36, height: 36, borderRadius: "50%", cursor: "pointer" }}>›</button>}
           </div>
           <div style={{ padding: "0 18px 22px", color: C.white }}>
             <p style={{ margin: "0 0 8px", lineHeight: 1.5 }}>{saved[activeIndex].caption || "Saved memory"}</p>
+            <DiaryMetadataLine post={saved[activeIndex]} style={{ color: "rgba(255,255,255,.72)", marginBottom: 8 }} />
             <p style={{ margin: "0 0 10px", fontSize: 12, opacity: 0.8 }}>Seen by you</p>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => onOpenPost?.(saved[activeIndex])} style={{ border: "none", borderRadius: 999, padding: "10px 14px", cursor: "pointer", background: C.white, color: C.dark, fontWeight: 800 }}>Open Diary</button>

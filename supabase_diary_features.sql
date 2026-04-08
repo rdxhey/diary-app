@@ -12,6 +12,13 @@ alter table public.posts
   add column if not exists journey_title text,
   add column if not exists season text,
   add column if not exists filter_type text,
+  add column if not exists overlay_text text,
+  add column if not exists overlay_x double precision,
+  add column if not exists overlay_y double precision,
+  add column if not exists overlay_font text,
+  add column if not exists camera_gear text,
+  add column if not exists lens text,
+  add column if not exists edit_software text,
   add column if not exists report_count integer not null default 0,
   add column if not exists is_hidden boolean not null default false;
 
