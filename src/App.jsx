@@ -4148,7 +4148,13 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
         <div style={{ position: "absolute", inset: 0, borderRadius: "0 0 34px 34px", background: "linear-gradient(to bottom,rgba(74,55,40,.05),rgba(250,247,242,.7))" }} />
         <div style={{ position: "absolute", bottom: 18, left: 118, right: 18 }}>
           <p style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", fontSize: 28, color: C.white, textShadow: "0 2px 12px rgba(0,0,0,.35)" }}>{profile.full_name || profile.username || "Diary user"}</p>
-          <p style={{ margin: "2px 0 0", fontSize: 12, color: C.cream, textShadow: "0 2px 12px rgba(0,0,0,.45)" }}>{profile.location ? `Currently in ${profile.location}` : "Rural memories"}</p>
+          {profile.location ? (
+            <button onClick={() => onOpenLocation?.(profile.location)} style={{ margin: "2px 0 0", padding: 0, border: "none", background: "none", fontSize: 12, color: C.cream, textShadow: "0 2px 12px rgba(0,0,0,.45)", cursor: "pointer" }}>
+              Currently in {profile.location}
+            </button>
+          ) : (
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: C.cream, textShadow: "0 2px 12px rgba(0,0,0,.45)" }}>Rural memories</p>
+          )}
         </div>
       </div>
       <div style={{ padding: "0 16px" }}>
@@ -5139,9 +5145,23 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
   const [reportReason, setReportReason] = useState("");
   const [chatWallpaper, setChatWallpaper] = useState(() => localStorage.getItem("diary-chat-wallpaper") || "");
   const [activeChannel, setActiveChannel] = useState(null);
+  const [hiddenMessageIdsState, setHiddenMessageIdsState] = useState(() => getHiddenMessageIds(currentUser?.id));
   const wallpaperRef = useRef(null);
-  const hiddenMessageIds = getHiddenMessageIds(currentUser?.id);
-  const visibleMessages = messages.filter((message) => isVisibleMessage(message) && !hiddenMessageIds.includes(message.id));
+  const visibleMessages = messages.filter((message) => isVisibleMessage(message) && !hiddenMessageIdsState.includes(message.id));
+
+  useEffect(() => {
+    setHiddenMessageIdsState(getHiddenMessageIds(currentUser?.id));
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    const handleStorage = (event) => {
+      if (event.key && event.key === getHiddenMessageIdsKey(currentUser?.id)) {
+        setHiddenMessageIdsState(getHiddenMessageIds(currentUser?.id));
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [currentUser?.id]);
 
   const loadConversations = useCallback(async () => {
     if (!currentUser) return;
@@ -5151,7 +5171,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
       .order("created_at", { ascending: false });
     const seen = new Set();
     const convos = [];
-    (data || []).filter((m) => isVisibleMessage(m) && !hiddenMessageIds.includes(m.id)).forEach(m => {
+    (data || []).filter((m) => isVisibleMessage(m) && !hiddenMessageIdsState.includes(m.id)).forEach(m => {
       const other = m.sender_id === currentUser.id ? m.receiver : m.sender;
       const otherId = m.sender_id === currentUser.id ? m.receiver_id : m.sender_id;
       if (other && !seen.has(otherId)) {
@@ -5160,7 +5180,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
       }
     });
     setConversations(convos);
-  }, [currentUser, hiddenMessageIds]);
+  }, [currentUser, hiddenMessageIdsState]);
 
   const closeConvo = useCallback(() => {
     if (activeChannel) {
@@ -5208,8 +5228,8 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
       .select("*")
       .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${user.id}),and(sender_id.eq.${user.id},receiver_id.eq.${currentUser.id})`)
       .order("created_at", { ascending: true });
-    setMessages((data || []).filter((message) => isVisibleMessage(message) && !hiddenMessageIds.includes(message.id)));
-  }, [currentUser, hiddenMessageIds]);
+    setMessages((data || []).filter((message) => isVisibleMessage(message) && !hiddenMessageIdsState.includes(message.id)));
+  }, [currentUser, hiddenMessageIdsState]);
 
   const openConvo = async (user) => {
     if (activeChannel) {
@@ -5260,7 +5280,9 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
 
   const unsendMessage = async () => {
     if (!selectedMessage || selectedMessage.sender_id !== currentUser?.id) return;
-    setHiddenMessageIds(currentUser.id, [...hiddenMessageIds, selectedMessage.id]);
+    const nextHiddenIds = [...new Set([...hiddenMessageIdsState, selectedMessage.id])];
+    setHiddenMessageIds(currentUser.id, nextHiddenIds);
+    setHiddenMessageIdsState(nextHiddenIds);
     let succeeded = false;
     const { error: updateError } = await supabase.from("messages").update({ content: UNSENT_MESSAGE_TOKEN }).eq("id", selectedMessage.id).eq("sender_id", currentUser.id);
     if (!updateError) {
