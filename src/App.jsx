@@ -1228,6 +1228,60 @@ function LoginPage({ onBack, onSuccess, showToast }) {
 // ============================================================
 // POST CARD — REAL LIKES & BOOKMARKS
 // ============================================================
+function MfaChallengePage({ factorId, onLogout, onVerified, showToast }) {
+  const [code, setCode] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleVerify = async () => {
+    if (!factorId || code.trim().length < 6) {
+      showToast("Enter the 6-digit code from your authenticator app", "error");
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.mfa.challengeAndVerify({
+        factorId,
+        code: code.trim(),
+      });
+      if (error) throw error;
+      showToast("Two-factor check complete");
+      onVerified?.();
+    } catch (err) {
+      showToast(err.message || "Could not verify authentication code", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: C.cream, fontFamily: "'Lato',sans-serif" }}>
+      <div style={{ padding: "56px 16px 24px", display: "flex", flexDirection: "column", width: "100%", maxWidth: "100vw", boxSizing: "border-box" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 36 }}>
+          <DiaryLogo size={22} />
+          <button onClick={onLogout} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: C.brown, fontWeight: 700 }}>
+            Sign out
+          </button>
+        </div>
+        <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 27, color: C.dark, margin: "0 0 6px" }}>Two-factor authentication</h2>
+        <p style={{ color: C.brown, fontSize: 13, marginBottom: 24, lineHeight: 1.6 }}>
+          Enter the 6-digit code from Google Authenticator or Microsoft Authenticator to continue.
+        </p>
+        <div style={{ background: C.white, borderRadius: 22, boxShadow: `0 8px 24px ${C.shadow}`, padding: 18, display: "grid", gap: 12 }}>
+          <Input
+            placeholder="6-digit code"
+            value={code}
+            onChange={e => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            icon="2FA"
+          />
+          <Btn variant="pink" onClick={handleVerify} loading={loading} disabled={code.trim().length < 6} style={{ width: "100%", borderRadius: 16, padding: "14px 16px" }}>
+            Verify and continue
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProfile, onDeletePost }) {
   const [burst, setBurst] = useState(null);
   const [showComments, setShowComments] = useState(false);
@@ -3663,6 +3717,11 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
   const [privateAccount, setPrivateAccount] = useState(false);
   const [emailDraft, setEmailDraft] = useState(currentUser?.email || "");
   const [countryDraft, setCountryDraft] = useState(currentCountry || profile?.country || "");
+  const [mfaStatus, setMfaStatus] = useState("loading");
+  const [mfaFactor, setMfaFactor] = useState(null);
+  const [mfaSetup, setMfaSetup] = useState(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaBusy, setMfaBusy] = useState(false);
 
   useEffect(() => {
     setPrivateAccount(Boolean(profile?.is_private || profile?.private_account));
@@ -3673,6 +3732,34 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
   useEffect(() => {
     localStorage.setItem("diary-settings", JSON.stringify(prefs));
   }, [prefs]);
+
+  const loadMfaState = async () => {
+    if (!currentUser) {
+      setMfaStatus("off");
+      setMfaFactor(null);
+      return;
+    }
+    setMfaStatus(prev => (prev === "setup" ? prev : "loading"));
+    try {
+      const { data, error } = await supabase.auth.mfa.listFactors();
+      if (error) throw error;
+      const factor = data?.totp?.[0] || data?.all?.find(item => item.factor_type === "totp" && item.status === "verified");
+      if (factor) {
+        setMfaFactor(factor);
+        setMfaStatus("on");
+      } else {
+        setMfaFactor(null);
+        setMfaStatus(prev => (prev === "setup" ? "setup" : "off"));
+      }
+    } catch {
+      setMfaFactor(null);
+      setMfaStatus(prev => (prev === "setup" ? "setup" : "off"));
+    }
+  };
+
+  useEffect(() => {
+    loadMfaState();
+  }, [currentUser]);
 
   const saveProfileFields = async (updates) => {
     if (!currentUser) return;
@@ -3776,6 +3863,76 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
     await saveProfileFields({ default_privacy: nextPrefs.defaultPrivacy, comments_from: nextPrefs.commentsFrom });
   };
 
+  const handleEnableMfa = async () => {
+    if (!currentUser) return;
+    setMfaBusy(true);
+    try {
+      const { data: factorData } = await supabase.auth.mfa.listFactors();
+      const staleFactors = (factorData?.all || []).filter(item => item.factor_type === "totp" && item.status !== "verified");
+      for (const factor of staleFactors) {
+        await supabase.auth.mfa.unenroll({ factorId: factor.id });
+      }
+      const { data, error } = await supabase.auth.mfa.enroll({
+        factorType: "totp",
+        friendlyName: "Diary Authenticator",
+        issuer: "Diary",
+      });
+      if (error) throw error;
+      setMfaSetup({
+        factorId: data.id,
+        qrCode: data.totp.qr_code,
+        secret: data.totp.secret,
+      });
+      setMfaCode("");
+      setMfaStatus("setup");
+    } catch (err) {
+      showToast(err.message || "Could not start 2FA setup", "error");
+    } finally {
+      setMfaBusy(false);
+    }
+  };
+
+  const handleVerifyMfa = async () => {
+    if (!mfaSetup?.factorId || mfaCode.trim().length < 6) {
+      showToast("Enter the 6-digit code from your authenticator app", "error");
+      return;
+    }
+    setMfaBusy(true);
+    try {
+      const { error } = await supabase.auth.mfa.challengeAndVerify({
+        factorId: mfaSetup.factorId,
+        code: mfaCode.trim(),
+      });
+      if (error) throw error;
+      setMfaSetup(null);
+      setMfaCode("");
+      await loadMfaState();
+      showToast("Two-factor authentication enabled");
+    } catch (err) {
+      showToast(err.message || "Could not verify that code", "error");
+    } finally {
+      setMfaBusy(false);
+    }
+  };
+
+  const handleDisableMfa = async () => {
+    if (!mfaFactor?.id) return;
+    setMfaBusy(true);
+    try {
+      const { error } = await supabase.auth.mfa.unenroll({ factorId: mfaFactor.id });
+      if (error) throw error;
+      setMfaFactor(null);
+      setMfaSetup(null);
+      setMfaCode("");
+      setMfaStatus("off");
+      showToast("Two-factor authentication disabled");
+    } catch (err) {
+      showToast(err.message || "Could not disable 2FA", "error");
+    } finally {
+      setMfaBusy(false);
+    }
+  };
+
   const sectionTitle = (label) => <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 10, fontWeight: 700, color: C.tan, letterSpacing: "1px", textTransform: "uppercase", margin: "0 0 7px" }}>{label}</p>;
   const cardStyle = { background: C.white, borderRadius: 16, padding: 14, boxShadow: `0 4px 16px ${C.shadow}`, marginBottom: 22 };
   const settingsLink = (label, target, danger = false) => (
@@ -3801,6 +3958,65 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
             <button onClick={handleChangePassword} style={{ border: "none", background: C.white, borderRadius: 14, padding: "12px 14px", cursor: "pointer", color: C.dark, fontWeight: 700, borderColor: C.beige, borderStyle: "solid", borderWidth: 1 }}>Change password</button>
           </div>
         </div>
+      </div>
+
+      {sectionTitle("Security")}
+      <div style={cardStyle}>
+        {mfaStatus === "setup" && mfaSetup ? (
+          <div style={{ display: "grid", gap: 12 }}>
+            <div>
+              <p style={{ margin: 0, color: C.dark, fontWeight: 800 }}>Two-Factor Authentication</p>
+              <p style={{ margin: "4px 0 0", color: C.brown, fontSize: 12, lineHeight: 1.6 }}>
+                Scan this QR code with Google Authenticator or Microsoft Authenticator, then enter the 6-digit code.
+              </p>
+            </div>
+            <div style={{ display: "flex", justifyContent: "center", padding: "8px 0" }}>
+              <img src={mfaSetup.qrCode} alt="Authenticator QR code" style={{ width: 172, height: 172, borderRadius: 18, background: C.white, padding: 10, boxShadow: `0 6px 18px ${C.shadow}` }} />
+            </div>
+            <div style={{ background: C.cream, border: `1px solid ${C.beige}`, borderRadius: 14, padding: 12 }}>
+              <p style={{ margin: "0 0 6px", color: C.brown, fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>Manual key</p>
+              <div style={{ color: C.dark, fontWeight: 800, wordBreak: "break-all", fontSize: 13 }}>{mfaSetup.secret}</div>
+            </div>
+            <Input placeholder="Enter 6-digit code" value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 6))} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <button onClick={handleVerifyMfa} disabled={mfaBusy || mfaCode.trim().length < 6} style={{ border: "none", background: C.dark, color: C.white, borderRadius: 14, padding: "12px 14px", cursor: "pointer", fontWeight: 800, opacity: mfaBusy || mfaCode.trim().length < 6 ? 0.7 : 1 }}>
+                Verify & Enable
+              </button>
+              <button onClick={() => { setMfaSetup(null); setMfaCode(""); setMfaStatus("off"); }} disabled={mfaBusy} style={{ border: `1px solid ${C.beige}`, background: C.white, color: C.dark, borderRadius: 14, padding: "12px 14px", cursor: "pointer", fontWeight: 700, opacity: mfaBusy ? 0.7 : 1 }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : mfaStatus === "on" ? (
+          <div style={{ display: "grid", gap: 12 }}>
+            <div>
+              <p style={{ margin: 0, color: C.dark, fontWeight: 800 }}>Two-Factor Authentication Enabled</p>
+              <p style={{ margin: "4px 0 0", color: C.brown, fontSize: 12, lineHeight: 1.6 }}>
+                Your Diary account will ask for a 6-digit authenticator code after password sign-in.
+              </p>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <button onClick={handleDisableMfa} disabled={mfaBusy} style={{ border: "none", background: C.dark, color: C.white, borderRadius: 14, padding: "12px 14px", cursor: "pointer", fontWeight: 800, opacity: mfaBusy ? 0.7 : 1 }}>
+                Disable 2FA
+              </button>
+              <button onClick={async () => { await handleDisableMfa(); setTimeout(handleEnableMfa, 150); }} disabled={mfaBusy} style={{ border: `1px solid ${C.beige}`, background: C.white, color: C.dark, borderRadius: 14, padding: "12px 14px", cursor: "pointer", fontWeight: 700, opacity: mfaBusy ? 0.7 : 1 }}>
+                Regenerate setup
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 12 }}>
+            <div>
+              <p style={{ margin: 0, color: C.dark, fontWeight: 800 }}>Two-Factor Authentication</p>
+              <p style={{ margin: "4px 0 0", color: C.brown, fontSize: 12, lineHeight: 1.6 }}>
+                Add an extra layer of security to your account with Google Authenticator or Microsoft Authenticator.
+              </p>
+            </div>
+            <button onClick={handleEnableMfa} disabled={mfaBusy || mfaStatus === "loading"} style={{ border: "none", background: C.beige, borderRadius: 14, padding: "12px 14px", cursor: "pointer", textAlign: "left", color: C.dark, fontWeight: 700, opacity: mfaBusy || mfaStatus === "loading" ? 0.7 : 1 }}>
+              {mfaStatus === "loading" ? "Checking security..." : "Enable 2FA"}
+            </button>
+          </div>
+        )}
       </div>
 
       {sectionTitle("Community")}
@@ -4281,12 +4497,14 @@ export default function DiaryApp() {
   const [page, setPage] = useState("home");
   const [currentUser, setCurrentUser] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [mfaFactorId, setMfaFactorId] = useState(null);
   const [currentCountry, setCurrentCountry] = useState(() => localStorage.getItem("diary-current-country") || "");
   const [viewProfileId, setViewProfileId] = useState(null);
   const [dmInitialUser, setDmInitialUser] = useState(null);
   const [focusedPost, setFocusedPost] = useState(null);
   const [showSignInStorm, setShowSignInStorm] = useState(false);
   const [toast, setToast] = useState({ msg: "", type: "success" });
+  const pendingLoginCelebrationRef = useRef(false);
   const [theme, setTheme] = useState(() => {
     try { return JSON.parse(localStorage.getItem("diary-theme")) || { mode: "light", backgroundImage: "" }; }
     catch { return { mode: "light", backgroundImage: "" }; }
@@ -4302,6 +4520,42 @@ export default function DiaryApp() {
   const fetchProfile = async (userId) => {
     const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
     setProfile(data);
+  };
+
+  const routeAuthenticatedSession = async (session) => {
+    if (!session?.user) {
+      setCurrentUser(null);
+      setProfile(null);
+      setMfaFactorId(null);
+      setScreen("landing");
+      return;
+    }
+
+    setCurrentUser(session.user);
+    await fetchProfile(session.user.id);
+
+    try {
+      const { data: aalData, error: aalError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (!aalError && aalData?.nextLevel === "aal2" && aalData?.currentLevel !== "aal2") {
+        const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors();
+        if (!factorsError) {
+          const factor = factorsData?.totp?.[0] || factorsData?.all?.find(item => item.factor_type === "totp" && item.status === "verified");
+          if (factor?.id) {
+            setMfaFactorId(factor.id);
+            setScreen("mfa");
+            return;
+          }
+        }
+      }
+    } catch {}
+
+    setMfaFactorId(null);
+    setScreen("app");
+    if (pendingLoginCelebrationRef.current) {
+      setPage("home");
+      setShowSignInStorm(true);
+      pendingLoginCelebrationRef.current = false;
+    }
   };
 
   useEffect(() => {
@@ -4353,24 +4607,10 @@ export default function DiaryApp() {
   // Check existing session
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setCurrentUser(session.user);
-        fetchProfile(session.user.id);
-        setScreen("app");
-      } else {
-        setScreen("landing");
-      }
+      routeAuthenticatedSession(session);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setCurrentUser(session.user);
-        fetchProfile(session.user.id);
-        setScreen("app");
-      } else {
-        setCurrentUser(null);
-        setProfile(null);
-        setScreen("landing");
-      }
+      routeAuthenticatedSession(session);
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -4409,7 +4649,11 @@ export default function DiaryApp() {
 
       {screen === "landing" && <LandingPage onSignup={() => setScreen("signup")} onLogin={() => setScreen("login")} />}
       {screen === "signup" && <SignupPage onBack={() => setScreen("landing")} onSuccess={user => { setCurrentUser(user); setScreen("app"); setPage("home"); }} showToast={showToast} />}
-      {screen === "login" && <LoginPage onBack={() => setScreen("landing")} onSuccess={user => { setCurrentUser(user); setScreen("app"); setPage("home"); setShowSignInStorm(true); }} showToast={showToast} />}
+      {screen === "login" && <LoginPage onBack={() => setScreen("landing")} onSuccess={() => { pendingLoginCelebrationRef.current = true; }} showToast={showToast} />}
+      {screen === "mfa" && <MfaChallengePage factorId={mfaFactorId} onLogout={handleLogout} onVerified={async () => {
+        const { data: { session } } = await supabase.auth.getSession();
+        await routeAuthenticatedSession(session);
+      }} showToast={showToast} />}
 
       {screen === "app" && (
         <>
