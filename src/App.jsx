@@ -4794,7 +4794,7 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
       <div style={cardStyle}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
           {["light", "dark", "sepia", "custom"].map(mode => (
-            <button key={mode} onClick={() => setTheme(p => ({ ...p, mode }))} style={{ background: theme?.mode === mode ? C.dark : C.white, color: theme?.mode === mode ? C.white : C.dark, border: `1px solid ${C.beige}`, borderRadius: 14, padding: "10px 8px", cursor: "pointer", fontWeight: 700, textTransform: "capitalize" }}>{mode}</button>
+            <button key={mode} onClick={() => setTheme(p => normalizeTheme({ ...p, mode, backgroundVersion: Date.now() }))} style={{ background: theme?.mode === mode ? C.dark : C.white, color: theme?.mode === mode ? C.white : C.dark, border: `1px solid ${C.beige}`, borderRadius: 14, padding: "10px 8px", cursor: "pointer", fontWeight: 700, textTransform: "capitalize" }}>{mode}</button>
           ))}
         </div>
         <button onClick={() => themeRef.current?.click()} style={{ width: "100%", background: C.beige, border: "none", borderRadius: 14, padding: "11px 12px", cursor: "pointer", color: C.dark, fontWeight: 700 }}>Upload theme background</button>
@@ -4806,6 +4806,11 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
         <p style={{ margin: "0 0 8px", color: C.dark, fontWeight: 800 }}>Current detected country</p>
         <p style={{ margin: "0 0 12px", color: C.brown }}>{currentCountry ? formatCountryWithFlag(currentCountry) : "Not detected yet"}</p>
         <CountryPicker value={countryDraft} onChange={setCountryDraft} />
+        {currentCountry && (
+          <button onClick={() => setCountryDraft(currentCountry)} style={{ marginTop: 10, width: "100%", border: `1px solid ${C.beige}`, background: C.white, borderRadius: 14, padding: "12px 14px", cursor: "pointer", color: C.dark, fontWeight: 700 }}>
+            Use detected country
+          </button>
+        )}
         <button onClick={handleSaveLocation} style={{ marginTop: 10, width: "100%", border: "none", background: C.beige, borderRadius: 14, padding: "12px 14px", cursor: "pointer", color: C.dark, fontWeight: 800 }}>Save location</button>
       </div>
 
