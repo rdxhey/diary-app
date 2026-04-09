@@ -626,28 +626,61 @@ function DiaryTravelMap({ posts = [], title = "Travel Map", onPostClick }) {
   const mapped = posts.filter(p => p.location || p.location_name || p.lat || p.lng).slice(0, 18);
   const mapRef = useRef(null);
   const mapElRef = useRef(null);
+  const routeId = useMemo(() => `diary-route-${Math.random().toString(36).slice(2, 9)}`, []);
+  const mappedCoords = useMemo(() => (
+    mapped.map((post, i) => {
+      const fallback = placeToCoords(post.location_name || post.location || `post-${i}`);
+      return {
+        post,
+        lng: Number(post.lng ?? fallback.lng),
+        lat: Number(post.lat ?? fallback.lat),
+      };
+    })
+  ), [mapped]);
 
   useEffect(() => {
     if (!mapElRef.current || mapRef.current) return;
-    const first = mapped[0];
-    const center = first ? placeToCoords(first.location_name || first.location || "Diary") : { lng: 78.9629, lat: 20.5937 };
+    const first = mappedCoords[0];
+    const center = first || { lng: 78.9629, lat: 20.5937 };
     mapRef.current = new maplibregl.Map({
       container: mapElRef.current,
       style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-      center: [Number(first?.lng ?? center.lng), Number(first?.lat ?? center.lat)],
+      center: [center.lng, center.lat],
       zoom: first ? 3.2 : 1.6,
       attributionControl: false,
     });
     mapRef.current.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     return () => { mapRef.current?.remove(); mapRef.current = null; };
-  }, []);
+  }, [mappedCoords]);
 
   useEffect(() => {
     if (!mapRef.current) return;
-    const markers = mapped.map((post, i) => {
-      const fallback = placeToCoords(post.location_name || post.location || `post-${i}`);
-      const lng = Number(post.lng ?? fallback.lng);
-      const lat = Number(post.lat ?? fallback.lat);
+    if (mapRef.current.getLayer(routeId)) mapRef.current.removeLayer(routeId);
+    if (mapRef.current.getSource(routeId)) mapRef.current.removeSource(routeId);
+    if (mappedCoords.length > 1) {
+      mapRef.current.addSource(routeId, {
+        type: "geojson",
+        data: {
+          type: "Feature",
+          geometry: {
+            type: "LineString",
+            coordinates: mappedCoords.map((item) => [item.lng, item.lat]),
+          },
+        },
+      });
+      mapRef.current.addLayer({
+        id: routeId,
+        type: "line",
+        source: routeId,
+        paint: {
+          "line-color": C.dark,
+          "line-width": 2.4,
+          "line-opacity": 0.5,
+          "line-dasharray": [1.5, 1.2],
+        },
+      });
+    }
+    const markers = mappedCoords.map(({ post, lng, lat }) => {
       const el = document.createElement("button");
       el.type = "button";
       el.textContent = "🚩 Diary";
@@ -675,8 +708,12 @@ function DiaryTravelMap({ posts = [], title = "Travel Map", onPostClick }) {
       gemMarkers.forEach(marker => bounds.extend(marker.getLngLat()));
       mapRef.current.fitBounds(bounds, { padding: 55, maxZoom: 8, duration: 600 });
     }
-    return () => [...markers, ...gemMarkers].forEach(marker => marker.remove());
-  }, [mapped, onPostClick]);
+    return () => {
+      [...markers, ...gemMarkers].forEach(marker => marker.remove());
+      if (mapRef.current?.getLayer(routeId)) mapRef.current.removeLayer(routeId);
+      if (mapRef.current?.getSource(routeId)) mapRef.current.removeSource(routeId);
+    };
+  }, [mappedCoords, onPostClick, routeId]);
 
   return (
     <div className="ios-card" style={{ background: C.white, borderRadius: 24, padding: 14, marginBottom: 18, boxShadow: `0 12px 36px ${C.shadow}` }}>
@@ -2257,6 +2294,7 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
   };
 
   const hero = posts[0];
+  const gridPosts = posts.slice(mode === "quotes" ? 0 : 1);
 
   return (
     <div style={{ padding: "56px 16px 100px", background: "transparent", minHeight: "100vh" }}>
@@ -2266,6 +2304,10 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
           <button onClick={() => { setMode("discover"); setPage?.("discover"); }} style={{ background: mode === "discover" ? C.beige : "transparent", border: "none", padding: "8px 12px", borderRadius: 999, cursor: "pointer", fontWeight: 700 }}>Discover</button>
           <button onClick={() => { setMode("quotes"); setPage?.("quotes"); }} style={{ background: mode === "quotes" ? C.beige : "transparent", border: "none", padding: "8px 12px", borderRadius: 999, cursor: "pointer", fontWeight: 700 }}>Diary Quotes</button>
         </div>
+      </div>
+      <div style={{ background: C.white, border: `1px solid ${C.beige}`, borderRadius: 18, padding: 14, marginBottom: 18, boxShadow: `0 10px 28px ${C.shadow}` }}>
+        <p style={{ margin: "0 0 6px", color: C.dark, fontWeight: 800, fontSize: 13 }}>{mode === "quotes" ? "Find inspiration and share your creations" : "Find people, places, and moods worth opening"}</p>
+        <p style={{ margin: 0, color: C.brown, fontSize: 12 }}>{posts.length ? `${posts.length} diary moments are ready to explore.` : "Search or open a location, vibe, or quote trail."}</p>
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
         <Input placeholder={mode === "quotes" ? "Search quotes..." : "Search people, places..."} value={search} onChange={e => setSearch(e.target.value)} icon="🔍" style={{ flex: 1 }} />
@@ -2320,13 +2362,43 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
       <div style={{ marginBottom: 22 }}>
         <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>{title}</h3>
         {mode === "quotes" ? (
-          <div style={{ display: "grid", gap: 14 }}>
-            {posts.map(p => <QuoteCard key={p.id} post={p} showToast={showToast} onOpenProfile={onOpenProfile} onOpenPost={onOpenPost} />)}
-          </div>
+          posts.length ? (
+            <div style={{ display: "grid", gap: 14 }}>
+              {posts.map((p) => <QuoteCard key={p.id} post={p} showToast={showToast} onOpenProfile={onOpenProfile} onOpenPost={onOpenPost} />)}
+            </div>
+          ) : (
+            <div style={{ background: C.white, borderRadius: 20, padding: 22, textAlign: "center", boxShadow: `0 8px 24px ${C.shadow}` }}>
+              <p style={{ margin: "0 0 6px", fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, fontSize: 20 }}>No diary quotes here yet</p>
+              <p style={{ margin: 0, color: C.brown, fontSize: 13 }}>Try another word, place, or switch back to Discover.</p>
+            </div>
+          )
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
-            {posts.map(p => <img key={p.id} onClick={() => onOpenPost?.(p)} src={p.image_url} alt="" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8, cursor: "pointer", filter: FILTERS[p.filter_type || "none"] || "none" }} />)}
-          </div>
+          gridPosts.length ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {gridPosts.map((p) => (
+                <button key={p.id} onClick={() => onOpenPost?.(p)} style={{ border: "none", padding: 0, cursor: "pointer", textAlign: "left", background: C.white, borderRadius: 20, overflow: "hidden", boxShadow: `0 10px 26px ${C.shadow}` }}>
+                  <div style={{ aspectRatio: "4/5", background: C.beige }}>
+                    {p.image_url ? (
+                      <img src={p.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", filter: FILTERS[p.filter_type || "none"] || "none" }} />
+                    ) : (
+                      <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: 18 }}>
+                        <p style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, fontSize: 18 }}>{p.caption || "Open diary"}</p>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ padding: 12 }}>
+                    <p style={{ margin: "0 0 4px", color: C.dark, fontWeight: 800, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.location || p.location_name || "Diary moment"}</p>
+                    <p style={{ margin: 0, color: C.brown, fontSize: 12, lineHeight: 1.4, minHeight: 34 }}>{(p.caption || "Open this diary").slice(0, 58)}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div style={{ background: C.white, borderRadius: 20, padding: 22, textAlign: "center", boxShadow: `0 8px 24px ${C.shadow}` }}>
+              <p style={{ margin: "0 0 6px", fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, fontSize: 20 }}>Nothing matched that search</p>
+              <p style={{ margin: 0, color: C.brown, fontSize: 13 }}>Try a new location, mood, or profile name.</p>
+            </div>
+          )
         )}
       </div>
     </div>
@@ -2369,7 +2441,7 @@ const getRecentMemoryPosts = (posts = [], max = 12) => {
   const now = Date.now();
   const sorted = [...(posts || [])].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
   const recent = sorted.filter((post) => now - new Date(post.created_at || 0).getTime() <= STORY_WINDOW_MS);
-  return (recent.length ? recent : sorted).slice(0, max);
+  return recent.slice(0, max);
 };
 
 const buildStoryGroupsByUser = (posts = []) => {
@@ -2419,6 +2491,7 @@ const markStorySeenLocal = (currentUser, story) => {
 };
 
 function StoryTray({ title = "Memories", items = [], onOpenItem, onCreate, emptyText = "No memories yet" }) {
+  if (!items.length && !onCreate) return null;
   return (
     <div style={{ background: C.beige, borderRadius: 18, padding: "13px 16px", marginBottom: 18 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -2451,9 +2524,12 @@ function StoryTray({ title = "Memories", items = [], onOpenItem, onCreate, empty
 
 function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showToast, onOpenProfile, onOpenPost }) {
   const [index, setIndex] = useState(startIndex);
-  const [likedIds, setLikedIds] = useState(new Set());
+  const [appreciatedIds, setAppreciatedIds] = useState(new Set());
   const [likeDetails, setLikeDetails] = useState({});
   const [viewersByStory, setViewersByStory] = useState({});
+  const [holdProgress, setHoldProgress] = useState(0);
+  const holdTimerRef = useRef(null);
+  const holdStartRef = useRef(0);
   const story = stories[index];
   const isOwner = Boolean(currentUser?.id && story?.user_id === currentUser.id);
 
@@ -2479,7 +2555,7 @@ function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showT
         supabase.from("likes").select("post_id").eq("user_id", currentUser.id).in("post_id", ids),
         supabase.from("likes").select("post_id, user_id, profiles!likes_user_id_fkey(username, full_name)").in("post_id", ids),
       ]);
-      setLikedIds(new Set((myLikes || []).map((row) => row.post_id)));
+      setAppreciatedIds(new Set((myLikes || []).map((row) => row.post_id)));
       const groupedLikes = {};
       (likes || []).forEach((row) => {
         if (!groupedLikes[row.post_id]) groupedLikes[row.post_id] = [];
@@ -2512,29 +2588,49 @@ function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showT
 
   if (!story) return null;
 
-  const toggleStoryLike = async () => {
+  const clearHold = () => {
+    if (holdTimerRef.current) clearInterval(holdTimerRef.current);
+    holdTimerRef.current = null;
+    holdStartRef.current = 0;
+    setHoldProgress(0);
+  };
+
+  const appreciateStory = async () => {
     if (!currentUser) {
       showToast?.("Sign in to appreciate memories", "error");
       return;
     }
-    const nextLiked = !likedIds.has(story.id);
-    setLikedIds((prev) => {
-      const next = new Set(prev);
-      if (nextLiked) next.add(story.id);
-      else next.delete(story.id);
-      return next;
-    });
+    if (appreciatedIds.has(story.id)) {
+      showToast?.("Already appreciated");
+      return;
+    }
+    setAppreciatedIds((prev) => new Set([...prev, story.id]));
     setLikeDetails((prev) => {
       const current = prev[story.id] || [];
       const label = displayHandle(currentUser.user_metadata?.username || currentUser.email?.split("@")[0] || "you");
       return {
         ...prev,
-        [story.id]: nextLiked ? [...current.filter((name) => name !== label), label] : current.filter((name) => name !== label),
+        [story.id]: [...current.filter((name) => name !== label), label],
       };
     });
-    if (nextLiked) await supabase.from("likes").insert({ user_id: currentUser.id, post_id: story.id });
-    else await supabase.from("likes").delete().match({ user_id: currentUser.id, post_id: story.id });
+    await supabase.from("likes").insert({ user_id: currentUser.id, post_id: story.id });
+    showToast?.("Appreciation sent privately");
   };
+
+  const startHold = () => {
+    if (!story || appreciatedIds.has(story.id) || holdTimerRef.current) return;
+    holdStartRef.current = performance.now();
+    holdTimerRef.current = setInterval(() => {
+      const progress = Math.min((performance.now() - holdStartRef.current) / 2000, 1);
+      setHoldProgress(progress);
+      if (progress >= 1) {
+        clearHold();
+        appreciateStory();
+      }
+    }, 16);
+  };
+
+  const stopHold = () => clearHold();
 
   const viewers = viewersByStory[story.id] || [];
   const appreciators = likeDetails[story.id] || [];
@@ -2576,8 +2672,26 @@ function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showT
       </div>
       <div style={{ padding: "0 16px 18px", color: C.white }}>
         <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-          <button onClick={toggleStoryLike} style={{ border: "none", borderRadius: 999, padding: "10px 14px", cursor: "pointer", background: likedIds.has(story.id) ? C.pink : "rgba(255,255,255,.12)", color: C.white, fontWeight: 800 }}>
-            {likedIds.has(story.id) ? "Diared" : "Diary like"}
+          <button
+            onMouseDown={startHold}
+            onMouseUp={stopHold}
+            onMouseLeave={stopHold}
+            onTouchStart={startHold}
+            onTouchEnd={stopHold}
+            style={{
+              border: "none",
+              borderRadius: 999,
+              padding: "10px 14px",
+              cursor: "pointer",
+              background: appreciatedIds.has(story.id)
+                ? C.pink
+                : `conic-gradient(${C.pink} ${holdProgress * 360}deg, rgba(255,255,255,.12) 0deg)`,
+              color: C.white,
+              fontWeight: 800,
+              minWidth: 120,
+            }}
+          >
+            {appreciatedIds.has(story.id) ? "Appreciated" : "Hold D"}
           </button>
           <button onClick={() => onOpenPost?.(story)} style={{ border: "1px solid rgba(255,255,255,.28)", borderRadius: 999, padding: "10px 14px", cursor: "pointer", background: "transparent", color: C.white, fontWeight: 800 }}>
             Open Diary
@@ -3884,6 +3998,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
   const [people, setPeople] = useState([]);
   const [filter, setFilter] = useState("all");
   const [selectedMessage, setSelectedMessage] = useState(null);
+  const [reportReason, setReportReason] = useState("");
 
   const loadConversations = useCallback(async () => {
     if (!currentUser) return;
@@ -3969,6 +4084,24 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
       showToast?.("Message unsent");
     }
     setSelectedMessage(null);
+  };
+
+  const reportMessage = async (reason) => {
+    if (!selectedMessage || selectedMessage.sender_id === currentUser?.id) return;
+    setReportReason(reason);
+    const payload = {
+      reporter_id: currentUser.id,
+      target_type: "message",
+      target_id: selectedMessage.id,
+      reason,
+      description: selectedMessage.content?.slice(0, 240) || "Reported from a DM thread",
+      status: "pending",
+    };
+    const { error } = await supabase.from("reports").insert(payload);
+    if (error) showToast?.("Message report could not be submitted", "error");
+    else showToast?.("Report submitted to Diary authority");
+    setSelectedMessage(null);
+    setReportReason("");
   };
 
   const filteredConversations = conversations.filter((c, index) => {
@@ -4070,7 +4203,18 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
             {selectedMessage.sender_id === currentUser?.id ? (
               <button onClick={unsendMessage} style={{ width: "100%", textAlign: "left", border: "none", background: "none", padding: "13px 2px", color: C.red, fontWeight: 800, cursor: "pointer" }}>Unsend message</button>
             ) : (
-              <button onClick={() => { setSelectedMessage(null); showToast?.("Report tools are being polished — we’ll notify you soon."); }} style={{ width: "100%", textAlign: "left", border: "none", background: "none", padding: "13px 2px", color: C.dark, fontWeight: 700, cursor: "pointer" }}>Report message</button>
+              <div style={{ display: "grid", gap: 6, paddingTop: 4 }}>
+                <p style={{ margin: 0, fontSize: 12, color: C.brown }}>Report to Diary authority</p>
+                {["Spam", "Harassment", "Unsafe", "Other"].map((reason) => (
+                  <button
+                    key={reason}
+                    onClick={() => reportMessage(reason)}
+                    style={{ width: "100%", textAlign: "left", border: `1px solid ${C.beige}`, borderRadius: 14, background: reportReason === reason ? C.beige : C.cream, padding: "12px 12px", color: C.dark, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    {reason}
+                  </button>
+                ))}
+              </div>
             )}
             <button onClick={() => setSelectedMessage(null)} style={{ width: "100%", textAlign: "left", border: "none", background: "none", padding: "13px 2px", color: C.brown, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
           </div>
