@@ -76,6 +76,13 @@ class AppErrorBoundary extends React.Component {
   }
 }
 
+const normalizeTheme = (theme) => ({
+  mode: theme?.mode || "light",
+  backgroundImage: theme?.backgroundImage || "",
+  backgroundVersion: Number(theme?.backgroundVersion || 0),
+  tone: theme?.tone || "light",
+});
+
 const getThemePalette = (theme) => {
   if (theme?.mode === "dark") {
     return {
@@ -363,65 +370,97 @@ function ShareGlyph({ color = "currentColor", size = 20 }) {
 }
 
 function CountryPicker({ value, onChange }) {
-  const [query, setQuery] = useState(value || "");
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
   const filtered = COUNTRY_OPTIONS.filter(([, country]) => country.toLowerCase().includes(query.trim().toLowerCase()));
   const selectedCountry = getCountryOption(value);
 
   useEffect(() => {
-    setQuery(value || "");
-  }, [value]);
+    if (!open) setQuery("");
+  }, [value, open]);
 
   return (
     <div style={{ display: "grid", gap: 10 }}>
-      <Input placeholder="Search country..." value={query} onChange={(e) => setQuery(e.target.value)} icon="Search" />
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "0 2px" }}>
         <span style={{ color: C.brown, fontSize: 12, fontWeight: 700 }}>Choose your country</span>
         {selectedCountry && (
-          <span style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            background: C.cream,
-            color: C.dark,
-            border: `1px solid ${C.beige}`,
-            borderRadius: 999,
-            padding: "6px 10px",
-            fontSize: 12,
-            fontWeight: 700,
-          }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, background: C.cream, color: C.dark, border: `1px solid ${C.beige}`, borderRadius: 999, padding: "6px 10px", fontSize: 12, fontWeight: 700 }}>
             <span>{selectedCountry[0]}</span>
             <span>{selectedCountry[1]}</span>
           </span>
         )}
       </div>
-      <div style={{ maxHeight: 180, overflowY: "auto", border: `1px solid ${C.beige}`, borderRadius: 16, background: C.white, padding: 6 }}>
-        {filtered.map(([flag, country]) => (
-          <button
-            key={country}
-            onClick={() => { onChange(country); setQuery(country); }}
-            style={{
-              width: "100%",
-              border: "none",
-              background: value === country ? C.beige : "transparent",
-              borderRadius: 12,
-              padding: "11px 12px",
-              textAlign: "left",
-              cursor: "pointer",
-              color: C.dark,
-              fontWeight: value === country ? 800 : 600,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <span style={{ fontSize: 18 }}>{flag}</span>
-            <span>{country}</span>
-          </button>
-        ))}
-        {filtered.length === 0 && (
-          <div style={{ padding: "12px 10px", color: C.brown, fontSize: 12 }}>No country matched that search.</div>
-        )}
-      </div>
+      <button
+        onClick={() => setOpen(true)}
+        style={{
+          width: "100%",
+          border: `1.5px solid ${C.tan}`,
+          borderRadius: 16,
+          background: C.white,
+          padding: "13px 14px",
+          textAlign: "left",
+          cursor: "pointer",
+          color: value ? C.dark : C.brown,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          fontWeight: 700,
+        }}
+      >
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <span style={{ fontSize: 18 }}>{selectedCountry?.[0] || "🌍"}</span>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedCountry?.[1] || "Open country list"}</span>
+        </span>
+        <span style={{ color: C.tan, fontSize: 18 }}>▾</span>
+      </button>
+      {open && (
+        <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 9999, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 480, background: C.white, borderRadius: "24px 24px 0 0", padding: "12px 16px 24px", boxShadow: `0 -14px 40px ${C.shadow}`, maxHeight: "72vh", overflow: "hidden", display: "grid", gap: 12 }}>
+            <div style={{ width: 42, height: 4, borderRadius: 999, background: C.tan, margin: "0 auto 2px", opacity: 0.7 }} />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <h3 style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark }}>Choose country</h3>
+              <button onClick={() => setOpen(false)} style={{ border: "none", background: "none", color: C.brown, cursor: "pointer", fontSize: 24, lineHeight: 1 }}>×</button>
+            </div>
+            <div style={{ position: "relative" }}>
+              <span style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", display: "inline-flex", pointerEvents: "none" }}>
+                <SearchGlyph color={C.tan} size={16} />
+              </span>
+              <input
+                placeholder="Search country..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                style={{ width: "100%", boxSizing: "border-box", padding: "13px 14px 13px 48px", border: `1.5px solid ${C.tan}`, borderRadius: 12, background: C.white, fontFamily: "'Lato',sans-serif", fontSize: 14, color: C.dark, outline: "none" }}
+              />
+            </div>
+            <div style={{ maxHeight: "48vh", overflowY: "auto", border: `1px solid ${C.beige}`, borderRadius: 18, background: C.cream, padding: 6 }}>
+              {filtered.map(([flag, country]) => (
+                <button
+                  key={country}
+                  onClick={() => { onChange(country); setOpen(false); }}
+                  style={{
+                    width: "100%",
+                    border: "none",
+                    background: value === country ? C.beige : "transparent",
+                    borderRadius: 12,
+                    padding: "11px 12px",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    color: C.dark,
+                    fontWeight: value === country ? 800 : 600,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <span style={{ fontSize: 18 }}>{flag}</span>
+                  <span>{country}</span>
+                </button>
+              ))}
+              {filtered.length === 0 && <div style={{ padding: "12px 10px", color: C.brown, fontSize: 12 }}>No country matched that search.</div>}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2722,7 +2761,17 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
         <p style={{ margin: 0, color: C.brown, fontSize: 12 }}>{posts.length ? `${posts.length} diary moments are ready to explore.` : "Search or open a location, vibe, or quote trail."}</p>
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-        <Input placeholder={mode === "quotes" ? "Search quotes..." : "Search people, places..."} value={search} onChange={e => setSearch(e.target.value)} icon="Search" style={{ flex: 1 }} />
+        <div style={{ position: "relative", flex: 1 }}>
+          <span style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", display: "inline-flex", pointerEvents: "none" }}>
+            <SearchGlyph color={C.tan} size={16} />
+          </span>
+          <input
+            placeholder={mode === "quotes" ? "Search quotes..." : "Search people, places..."}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{ width: "100%", boxSizing: "border-box", padding: "13px 14px 13px 48px", border: `1.5px solid ${C.tan}`, borderRadius: 12, background: C.white, fontFamily: "'Lato',sans-serif", fontSize: 14, color: C.dark, outline: "none" }}
+          />
+        </div>
         <Btn variant="primary" onClick={handleSearch} loading={searching} style={{ borderRadius: 12, padding: "13px 18px" }}>Go</Btn>
       </div>
       {results.length > 0 && (
@@ -2992,6 +3041,37 @@ function StoryTray({ title = "Memories", items = [], onOpenItem, onCreate, empty
             </div>
             <span style={{ fontSize: 10, color: C.brown, fontFamily: "'Lato',sans-serif", maxWidth: 64, textAlign: "center", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{item.label}</span>
           </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RelatedAccountsShelf({ users = [], onOpenProfile, onFollow, onSeeAll }) {
+  if (!users.length) return null;
+  return (
+    <div style={{ background: C.white, borderRadius: 22, padding: "14px 14px 16px", marginBottom: 16, boxShadow: `0 10px 28px ${C.shadow}` }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+        <h3 style={{ margin: 0, fontFamily: "'Lato',sans-serif", fontSize: 15, color: C.dark, fontWeight: 800 }}>Related accounts</h3>
+        <button onClick={onSeeAll} style={{ border: "none", background: "none", padding: 0, color: C.pink, fontWeight: 800, cursor: "pointer" }}>See all</button>
+      </div>
+      <div style={{ display: "grid", gridAutoFlow: "column", gridAutoColumns: "minmax(160px, 1fr)", gap: 10, overflowX: "auto", paddingBottom: 2 }}>
+        {users.map((user) => (
+          <div key={user.id} style={{ background: C.cream, border: `1px solid ${C.beige}`, borderRadius: 20, padding: "14px 12px", minHeight: 176, display: "grid", alignContent: "start", gap: 10, boxSizing: "border-box" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+              <button onClick={() => onOpenProfile?.(user.id)} style={{ border: "none", background: "none", padding: 0, cursor: "pointer" }}>
+                <Avatar src={user.avatar_url} size={56} active />
+              </button>
+              <button onClick={() => onFollow?.(user)} style={{ border: "none", background: "none", color: C.tan, cursor: "pointer", fontSize: 20, lineHeight: 1 }}>×</button>
+            </div>
+            <button onClick={() => onOpenProfile?.(user.id)} style={{ border: "none", background: "none", padding: 0, textAlign: "left", cursor: "pointer" }}>
+              <p style={{ margin: 0, color: C.dark, fontWeight: 800, fontSize: 15 }}>{displayHandle(user.username)}</p>
+              <p style={{ margin: "4px 0 0", color: C.brown, fontSize: 12, minHeight: 30, lineHeight: 1.25 }}>{user.full_name || "Diary user"}</p>
+            </button>
+            <button onClick={() => onFollow?.(user)} style={{ border: "none", borderRadius: 12, background: user.is_following ? C.beige : C.dark, color: user.is_following ? C.dark : C.white, padding: "10px 12px", cursor: "pointer", fontWeight: 800 }}>
+              {user.is_following ? "Following" : "Follow"}
+            </button>
+          </div>
         ))}
       </div>
     </div>
@@ -3818,6 +3898,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
   const [profile, setProfile] = useState(null);
   const [posts, setPosts] = useState([]);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [relatedAccounts, setRelatedAccounts] = useState([]);
   const [reportOpen, setReportOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("posts");
   const [storyIndex, setStoryIndex] = useState(null);
@@ -3840,6 +3921,30 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
       setStats({ followers: followerCount || 0, following: followingCount || 0 });
     })();
   }, [profileId, currentUser]);
+
+  useEffect(() => {
+    if (!currentUser || currentUser.id === profileId || !profile) {
+      setRelatedAccounts([]);
+      return;
+    }
+    (async () => {
+      const { data: followRows } = await supabase.from("follows").select("following_id").eq("follower_id", currentUser.id);
+      const followedIds = new Set((followRows || []).map((row) => row.following_id));
+      const profileQuery = profile.country
+        ? supabase.from("profiles").select("id, username, full_name, avatar_url, country").eq("country", profile.country).neq("id", profileId).neq("id", currentUser.id).limit(18)
+        : supabase.from("profiles").select("id, username, full_name, avatar_url, country").neq("id", profileId).neq("id", currentUser.id).limit(18);
+      const { data: candidates } = await profileQuery;
+      const enriched = await enrichProfilesForSheet((candidates || []).map((row) => row.id));
+      const suggestionList = (enriched || [])
+        .filter((user) => user.id !== profileId && user.id !== currentUser.id)
+        .map((user) => ({ ...user, is_following: followedIds.has(user.id) }))
+        .sort((a, b) => {
+          if (a.is_following !== b.is_following) return a.is_following ? 1 : -1;
+          return (b.followers_count || 0) - (a.followers_count || 0);
+        });
+      setRelatedAccounts(suggestionList.slice(0, 10));
+    })();
+  }, [currentUser, profile, profileId, isFollowing]);
 
   const openFollowSheet = async (kind) => {
     const column = kind === "followers" ? "following_id" : "follower_id";
@@ -3864,6 +3969,21 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
       await supabase.from("notifications").insert({ user_id: profileId, from_user_id: currentUser.id, type: "follow" });
       setIsFollowing(true);
     }
+  };
+
+  const handleRelatedFollow = async (user) => {
+    if (!currentUser || !user?.id) return;
+    if (user.is_following) {
+      onOpenProfile?.(user.id);
+      return;
+    }
+    const { error } = await supabase.from("follows").insert({ follower_id: currentUser.id, following_id: user.id });
+    if (error) {
+      showToast(error.message || "Could not follow this account", "error");
+      return;
+    }
+    setRelatedAccounts(prev => prev.map((item) => item.id === user.id ? { ...item, is_following: true } : item));
+    showToast(`Following ${displayHandle(user.username, "user")}`);
   };
 
   const handleMessage = async () => {
@@ -3926,6 +4046,14 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
         {profile.location && <button onClick={() => onOpenLocation?.(profile.location)} style={{ border: "none", background: "none", padding: 0, color: C.brown, fontSize: 12, marginBottom: 8, cursor: "pointer" }}>📍 Currently in: {profile.location}</button>}
         {profile.website && <div style={{ marginBottom: 10 }}><WebsiteBadge url={profile.website} label="Open personal website" /></div>}
         {currentUser?.id !== profileId && <button onClick={handleBlock} style={{ border: "none", background: "none", color: C.red, cursor: "pointer", padding: 0, marginBottom: 16 }}>Block user</button>}
+        {currentUser?.id !== profileId && isFollowing && relatedAccounts.length > 0 && (
+          <RelatedAccountsShelf
+            users={relatedAccounts.slice(0, 5)}
+            onOpenProfile={onOpenProfile}
+            onFollow={handleRelatedFollow}
+            onSeeAll={() => setFollowSheet({ open: true, title: "Related accounts", users: relatedAccounts })}
+          />
+        )}
         <div style={{ display: "flex", justifyContent: "space-around", background: C.white, borderRadius: 18, padding: "14px 10px", margin: "8px 0 18px", boxShadow: `0 8px 24px ${C.shadow}` }}>
           {[["Posts", posts.length], ["Journeys", journeys.length], ["Followers", stats.followers], ["Following", stats.following]].map(([label, value]) => (
             <button key={label} onClick={() => {
@@ -4395,6 +4523,7 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
     localStorage.removeItem("diary-theme");
     localStorage.removeItem("diary-settings");
     localStorage.removeItem("diary-current-country");
+    setTheme(normalizeTheme());
     showToast("Local cache cleared. Refresh to reload defaults.");
   };
 
@@ -4889,9 +5018,16 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
         if (active && (m.sender_id === active.id || m.receiver_id === active.id)) setMessages(prev => [...prev, m]);
         loadConversations();
       })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" }, payload => {
+        const deletedId = payload.old?.id;
+        if (!deletedId) return;
+        setMessages(prev => prev.filter((message) => message.id !== deletedId));
+        if (selectedMessage?.id === deletedId) setSelectedMessage(null);
+        loadConversations();
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [currentUser, active, loadConversations]);
+  }, [currentUser, active, loadConversations, selectedMessage]);
 
   useEffect(() => {
     if (chatWallpaper) localStorage.setItem("diary-chat-wallpaper", chatWallpaper);
@@ -4944,8 +5080,15 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
       showToast?.(error.message || "Could not unsend message", "error");
     } else {
       setMessages(prev => prev.filter(m => m.id !== selectedMessage.id));
+      if (active) {
+        const { data } = await supabase.from("messages")
+          .select("*")
+          .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${active.id}),and(sender_id.eq.${active.id},receiver_id.eq.${currentUser.id})`)
+          .order("created_at", { ascending: true });
+        setMessages(data || []);
+      }
       loadConversations();
-      showToast?.("Message unsent");
+      showToast?.("Message unsent for everyone");
     }
     setSelectedMessage(null);
   };
@@ -5150,8 +5293,8 @@ export default function DiaryApp() {
   const [toast, setToast] = useState({ msg: "", type: "success" });
   const pendingLoginCelebrationRef = useRef(false);
   const [theme, setTheme] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("diary-theme")) || { mode: "light", backgroundImage: "" }; }
-    catch { return { mode: "light", backgroundImage: "" }; }
+    try { return normalizeTheme(JSON.parse(localStorage.getItem("diary-theme"))); }
+    catch { return normalizeTheme(); }
   });
   const appliedTheme = getThemePalette(theme);
   Object.assign(C, appliedTheme);
@@ -5236,7 +5379,7 @@ export default function DiaryApp() {
     if (!file) return;
     try {
       const palette = await analyzeImagePalette(file);
-      setTheme(prev => ({ ...prev, mode: "custom", backgroundImage: palette.image, tone: palette.tone }));
+      setTheme(prev => ({ ...prev, mode: "custom", backgroundImage: palette.image, tone: palette.tone, backgroundVersion: Date.now() }));
       e.target.value = "";
       showToast("Theme updated");
     } catch {
@@ -5310,7 +5453,7 @@ export default function DiaryApp() {
 
   return (
     <AppErrorBoundary>
-      <div className="diary-paper" style={{ width: "100%", maxWidth: 480, margin: "0 auto", background: C.cream, minHeight: "100vh", position: "relative", overflowX: "hidden", boxShadow: `0 0 0 1px ${C.beige}`, backgroundImage: theme.mode === "custom" && theme.backgroundImage ? `linear-gradient(rgba(0,0,0,${theme.tone === "dark" ? 0.35 : 0.12}),rgba(0,0,0,${theme.tone === "dark" ? 0.45 : 0.08})), url(${theme.backgroundImage})` : undefined, backgroundSize: "cover", backgroundPosition: "center top", backgroundRepeat: "no-repeat", backgroundAttachment: "fixed" }}>
+      <div key={`paper-${theme.mode}-${theme.backgroundVersion || 0}`} className="diary-paper" style={{ width: "100%", maxWidth: 480, margin: "0 auto", background: C.cream, minHeight: "100vh", position: "relative", overflowX: "hidden", boxShadow: `0 0 0 1px ${C.beige}`, backgroundImage: theme.mode === "custom" && theme.backgroundImage ? `linear-gradient(rgba(0,0,0,${theme.tone === "dark" ? 0.35 : 0.12}),rgba(0,0,0,${theme.tone === "dark" ? 0.45 : 0.08})), url(${theme.backgroundImage})` : undefined, backgroundSize: "cover", backgroundPosition: "center top", backgroundRepeat: "no-repeat", backgroundAttachment: "fixed" }}>
         <FontLoader />
         <LovableVibeStyle />
 
