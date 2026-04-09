@@ -2956,7 +2956,7 @@ function DiaryQuotesPage(props) {
 async function enrichProfilesForSheet(ids = []) {
   const uniqueIds = [...new Set(ids.filter(Boolean))];
   if (!uniqueIds.length) return [];
-  const { data: users } = await supabase.from("profiles").select("id, username, full_name, avatar_url, website").in("id", uniqueIds);
+  const { data: users } = await supabase.from("profiles").select("id, username, full_name, avatar_url, website, location, country").in("id", uniqueIds);
   const [postsRes, followersRes, followingRes] = await Promise.all([
     supabase.from("posts").select("user_id").in("user_id", uniqueIds),
     supabase.from("follows").select("following_id").in("following_id", uniqueIds),
@@ -2979,6 +2979,8 @@ async function enrichProfilesForSheet(ids = []) {
 
   return uniqueIds.map((id) => byId.get(id)).filter(Boolean);
 }
+
+const getProfileLocationLabel = (user) => user?.location || user?.country || "";
 
 function FollowListSheet({ open, title, users, onClose, onOpenProfile }) {
   if (!open) return null;
@@ -3004,6 +3006,53 @@ function FollowListSheet({ open, title, users, onClose, onOpenProfile }) {
             </div>
             <span style={{ color: C.tan, fontSize: 18 }}>{">"}</span>
           </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FollowListSheetEnhanced({ open, title, users, onClose, onOpenProfile }) {
+  if (!open) return null;
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 9999, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 480, background: C.white, borderRadius: "24px 24px 0 0", padding: "12px 16px 24px", boxShadow: `0 -14px 40px ${C.shadow}`, maxHeight: "72vh", overflowY: "auto" }}>
+        <div style={{ width: 42, height: 4, borderRadius: 999, background: C.tan, margin: "0 auto 12px", opacity: 0.7 }} />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <h3 style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark }}>{title}</h3>
+          <button onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 20, color: C.brown }}>×</button>
+        </div>
+        {users.length === 0 ? (
+          <p style={{ color: C.brown, fontStyle: "italic", textAlign: "center", padding: "18px 0" }}>No people here yet</p>
+        ) : users.map((user) => (
+          <div key={user.id} style={{ display: "flex", alignItems: "stretch", gap: 10, borderBottom: `1px solid ${C.beige}`, padding: "12px 0" }}>
+            <button
+              onClick={() => { onClose(); onOpenProfile?.(user.id); }}
+              style={{ flex: 1, display: "flex", alignItems: "center", gap: 12, border: "none", background: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
+            >
+              <Avatar src={user.avatar_url} size={46} active />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, color: C.dark, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayHandle(user.username)}</p>
+                <p style={{ margin: "2px 0 0", color: C.brown, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.full_name || "Diary user"}</p>
+                {getProfileLocationLabel(user) ? (
+                  <p style={{ margin: "3px 0 0", color: C.tan, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {getProfileLocationLabel(user)}
+                  </p>
+                ) : null}
+                <p style={{ margin: "4px 0 0", color: C.tan, fontSize: 11 }}>
+                  {user.posts_count || 0} posts · {user.followers_count || 0} followers · {user.following_count || 0} following
+                </p>
+              </div>
+            </button>
+            {user.website ? <WebsiteBadge url={user.website} label={`Open ${displayHandle(user.username, "website")}`} /> : null}
+            <button
+              onClick={() => { onClose(); onOpenProfile?.(user.id); }}
+              style={{ border: `1px solid ${C.beige}`, background: C.cream, borderRadius: 14, minWidth: 42, cursor: "pointer", color: C.brown, fontWeight: 800 }}
+              aria-label={`Open ${displayHandle(user.username, "profile")}`}
+            >
+              {">"}
+            </button>
+          </div>
         ))}
       </div>
     </div>
@@ -3188,6 +3237,81 @@ function MemoryArchiveGrid({ title = "Memory Archive", posts = [], onOpenPost, e
           <p style={{ margin: 0, color: C.brown, fontStyle: "italic", fontFamily: "'Playfair Display',Georgia,serif" }}>{emptyText}</p>
         </div>
       )}
+    </div>
+  );
+}
+
+function ArchiveMemoryViewer({ posts = [], startIndex = 0, onClose, onOpenPost, onOpenLocation }) {
+  const [index, setIndex] = useState(startIndex);
+
+  useEffect(() => {
+    setIndex(startIndex);
+  }, [startIndex, posts]);
+
+  const post = posts[index];
+  if (!post) return null;
+
+  const canPrev = index > 0;
+  const canNext = index < posts.length - 1;
+  const title = post.location || post.location_name || "Archived memory";
+  const createdLabel = post.created_at ? new Date(post.created_at).toLocaleString() : "";
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(12,10,8,0.84)", display: "flex", alignItems: "center", justifyContent: "center", padding: "18px 14px 96px" }}>
+      <div style={{ width: "100%", maxWidth: 430, maxHeight: "100%", display: "grid", alignContent: "center", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", color: C.cream }}>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: 11, letterSpacing: "0.5px", textTransform: "uppercase", opacity: 0.86 }}>Memory archive</p>
+            <p style={{ margin: "3px 0 0", fontSize: 12, opacity: 0.76 }}>{createdLabel}</p>
+          </div>
+          <button onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,0.14)", color: C.cream, width: 38, height: 38, borderRadius: "50%", cursor: "pointer", fontSize: 18 }}>×</button>
+        </div>
+
+        <div style={{ background: C.cream, borderRadius: 28, overflow: "hidden", boxShadow: "0 24px 60px rgba(0,0,0,0.32)" }}>
+          <div style={{ background: C.beige, aspectRatio: "0.78", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+            {post.image_url ? (
+              <img
+                src={post.image_url}
+                alt={title}
+                style={{ width: "100%", height: "100%", objectFit: "contain", background: post.padding_color || C.beige, display: "block", filter: FILTERS[post.filter_type || "none"] || "none" }}
+              />
+            ) : (
+              <div style={{ padding: 26, textAlign: "center" }}>
+                <p style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, fontSize: 26, lineHeight: 1.2 }}>{post.caption || "Diary"}</p>
+              </div>
+            )}
+            {canPrev ? (
+              <button onClick={() => setIndex((value) => Math.max(0, value - 1))} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", border: "none", background: "rgba(255,255,255,0.88)", color: C.dark, width: 38, height: 38, borderRadius: "50%", cursor: "pointer", fontSize: 18 }}>{"<"}</button>
+            ) : null}
+            {canNext ? (
+              <button onClick={() => setIndex((value) => Math.min(posts.length - 1, value + 1))} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", border: "none", background: "rgba(255,255,255,0.88)", color: C.dark, width: 38, height: 38, borderRadius: "50%", cursor: "pointer", fontSize: 18 }}>{">"}</button>
+            ) : null}
+          </div>
+          <div style={{ padding: "16px 18px 18px" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, fontSize: 22 }}>{title}</p>
+                {post.caption ? (
+                  <p style={{ margin: "8px 0 0", color: C.brown, fontSize: 13, lineHeight: 1.6 }}>{post.caption}</p>
+                ) : null}
+              </div>
+              {post.location || post.location_name ? (
+                <button onClick={() => onOpenLocation?.(post.location || post.location_name)} style={{ border: `1px solid ${C.beige}`, background: C.white, borderRadius: 999, padding: "8px 12px", color: C.brown, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+                  Open place
+                </button>
+              ) : null}
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+              <button onClick={() => onOpenPost?.(post)} style={{ flex: 1, border: "none", borderRadius: 14, background: C.dark, color: C.cream, padding: "12px 14px", cursor: "pointer", fontWeight: 800 }}>
+                Open Diary
+              </button>
+              <button onClick={onClose} style={{ border: `1px solid ${C.beige}`, borderRadius: 14, background: C.white, color: C.brown, padding: "12px 14px", cursor: "pointer", fontWeight: 700 }}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -3720,6 +3844,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
   const [savedPosts, setSavedPosts] = useState([]);
   const [activeTab, setActiveTab] = useState("posts");
   const [storyIndex, setStoryIndex] = useState(null);
+  const [archiveIndex, setArchiveIndex] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [profileData, setProfileData] = useState(profile);
   const [form, setForm] = useState({ full_name: "", username: "", bio: "", location: "", website: "" });
@@ -3943,7 +4068,12 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
           onCreate={() => setPage("create")}
           emptyText="No live memories"
         />
-        <MemoryArchiveGrid title="Your archived memories" posts={archivedStories} onOpenPost={onOpenPost} emptyText="Your older memories will gather here" />
+        <MemoryArchiveGrid
+          title="Your archived memories"
+          posts={archivedStories}
+          onOpenPost={(post) => setArchiveIndex(archivedStories.findIndex((item) => item.id === post.id))}
+          emptyText="Your older memories will gather here"
+        />
 
         <ArcShelf posts={posts} title="Your Personal Lore" onOpenPost={onOpenPost} />
         <DiaryTravelMap posts={posts} title="Your Travel Map" onPostClick={(post) => onOpenPost?.(post)} onOpenLocation={onOpenLocation} currentCountry={profileData?.country || currentCountry || profileData?.location} />
@@ -3990,7 +4120,16 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
           onOpenPost={onOpenPost}
         />
       )}
-      <FollowListSheet open={followSheet.open} title={followSheet.title} users={followSheet.users} onClose={() => setFollowSheet({ open: false, title: "", users: [] })} onOpenProfile={onOpenProfile} />
+      {archiveIndex != null && archivedStories[archiveIndex] && (
+        <ArchiveMemoryViewer
+          posts={archivedStories}
+          startIndex={archiveIndex}
+          onClose={() => setArchiveIndex(null)}
+          onOpenPost={onOpenPost}
+          onOpenLocation={onOpenLocation}
+        />
+      )}
+      <FollowListSheetEnhanced open={followSheet.open} title={followSheet.title} users={followSheet.users} onClose={() => setFollowSheet({ open: false, title: "", users: [] })} onOpenProfile={onOpenProfile} />
     </div>
   );
 }
@@ -4007,6 +4146,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
   const [reportOpen, setReportOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("posts");
   const [storyIndex, setStoryIndex] = useState(null);
+  const [archiveIndex, setArchiveIndex] = useState(null);
   const [stats, setStats] = useState({ followers: 0, following: 0 });
   const [followSheet, setFollowSheet] = useState({ open: false, title: "", users: [] });
 
@@ -4216,7 +4356,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
             <MemoryArchiveGrid
               title={`${profile.full_name || profile.username || "Diary"}'s archive`}
               posts={archivedStories}
-              onOpenPost={onOpenPost}
+              onOpenPost={(post) => setArchiveIndex(archivedStories.findIndex((item) => item.id === post.id))}
               emptyText="No archived memories yet"
             />
             <ArcShelf posts={posts} title={`${profile.full_name || profile.username || "Diary"}'s Personal Lore`} onOpenPost={onOpenPost} />
@@ -4254,6 +4394,15 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
           onOpenPost={onOpenPost}
         />
       )}
+      {archiveIndex != null && archivedStories[archiveIndex] && (
+        <ArchiveMemoryViewer
+          posts={archivedStories}
+          startIndex={archiveIndex}
+          onClose={() => setArchiveIndex(null)}
+          onOpenPost={onOpenPost}
+          onOpenLocation={onOpenLocation}
+        />
+      )}
       {reportOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div style={{ background: C.white, borderRadius: 18, padding: 18, maxWidth: 340, width: "100%" }}>
@@ -4263,7 +4412,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
           </div>
         </div>
       )}
-      <FollowListSheet open={followSheet.open} title={followSheet.title} users={followSheet.users} onClose={() => setFollowSheet({ open: false, title: "", users: [] })} onOpenProfile={onOpenProfile} />
+      <FollowListSheetEnhanced open={followSheet.open} title={followSheet.title} users={followSheet.users} onClose={() => setFollowSheet({ open: false, title: "", users: [] })} onOpenProfile={onOpenProfile} />
     </div>
   );
 }
