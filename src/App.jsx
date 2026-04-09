@@ -849,6 +849,30 @@ function WebsiteBadge({ url, label = "Website" }) {
   );
 }
 
+function LocalSpotCard({ gem, showToast }) {
+  const openSpot = () => {
+    showToast?.(`${gem.name} saved in your Diary map`);
+    window.open(gem.sponsor_link, "_blank", "noopener,noreferrer");
+  };
+
+  return (
+    <div className="ios-card" style={{ background: C.white, borderRadius: 22, overflow: "hidden", boxShadow: `0 10px 30px ${C.shadow}`, marginBottom: 18, border: `1px solid ${C.beige}` }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: C.beige }}>
+        <span style={{ color: C.dark, fontWeight: 800, fontSize: 11, letterSpacing: ".8px", textTransform: "uppercase" }}>Local Spot</span>
+        <span style={{ color: C.brown, fontSize: 11 }}>{gem.name}</span>
+      </div>
+      <img src={gem.image} alt={gem.name} style={{ width: "100%", height: 210, objectFit: "cover", display: "block" }} />
+      <div style={{ padding: 14 }}>
+        <p style={{ margin: "0 0 6px", fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, fontSize: 22 }}>{gem.name}</p>
+        <p style={{ margin: "0 0 12px", color: C.brown, fontSize: 13, lineHeight: 1.55 }}>{gem.description}</p>
+        <button onClick={openSpot} style={{ width: "100%", border: "none", borderRadius: 14, padding: "12px 14px", cursor: "pointer", background: `linear-gradient(135deg, ${C.dark}, ${C.brown})`, color: C.white, fontWeight: 800 }}>
+          Open Local Spot
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function BottomNav2({ page, setPage }) {
   const tabs = [
     { id: "home", icon: "🏠", label: "Home" },
@@ -1557,6 +1581,18 @@ function HomePage({ currentUser, profile, currentCountry, setPage, showToast, on
   const countryLabel = (currentCountry || profile?.country || "").trim();
   const storyGroups = buildStoryGroupsByUser(posts);
   const seenIds = getSeenStoryIds(currentUser?.id);
+  const feedMoments = useMemo(() => {
+    if (!posts.length) return [];
+    const inserted = [];
+    posts.forEach((post, index) => {
+      inserted.push({ type: "post", value: post });
+      if ((index + 1) % 4 === 0) {
+        const gem = HIDDEN_GEMS[Math.floor(index / 4) % HIDDEN_GEMS.length];
+        inserted.push({ type: "gem", value: gem });
+      }
+    });
+    return inserted;
+  }, [posts]);
   const heading = category === "all"
     ? { title: `Moments in ${countryLabel || "your world"}`, sub: countryLabel ? `Diary moments around ${countryLabel}` : HEADINGS.all.sub }
     : (HEADINGS[category] || HEADINGS.all);
@@ -1761,8 +1797,10 @@ function HomePage({ currentUser, profile, currentCountry, setPage, showToast, on
             <Btn variant="pink" onClick={() => setPage("create")} style={{ marginTop: 12 }}>Share a Moment</Btn>
           </div>
         ) : (
-          posts.map(post => (
-            <PostCard key={post.id} post={post} currentUser={currentUser} onLike={handleLike} onBookmark={handleBookmark} showToast={showToast} onOpenProfile={onOpenProfile} onDeletePost={handleDeletePost} />
+          feedMoments.map((item, index) => (
+            item.type === "post"
+              ? <PostCard key={item.value.id} post={item.value} currentUser={currentUser} onLike={handleLike} onBookmark={handleBookmark} showToast={showToast} onOpenProfile={onOpenProfile} onDeletePost={handleDeletePost} />
+              : <LocalSpotCard key={`${item.value.id}-${index}`} gem={item.value} showToast={showToast} />
           ))
         )}
 
@@ -2735,7 +2773,7 @@ const buildArcsFromPosts = (posts = []) => {
   }).filter(arc => arc.entries.length > 0);
 };
 
-function ArcShelf({ posts = [], title = "Personal Lore", onOpenPost }) {
+function ArcShelf({ posts = [], title = "Personal Lore", onOpenPost, showHeader = true }) {
   const arcs = buildArcsFromPosts(posts);
   const [activeArc, setActiveArc] = useState(null);
   const [entryIndex, setEntryIndex] = useState(0);
@@ -2745,13 +2783,15 @@ function ArcShelf({ posts = [], title = "Personal Lore", onOpenPost }) {
   return (
     <>
       <div style={{ marginBottom: 18 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <div>
-            <h3 style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, fontSize: 20 }}>{title}</h3>
-            <p style={{ margin: "2px 0 0", color: C.brown, fontSize: 12 }}>Grouped like a quiet visual diary, not a noisy feed</p>
+        {showHeader && (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <div>
+              <h3 style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, fontSize: 20 }}>{title}</h3>
+              <p style={{ margin: "2px 0 0", color: C.brown, fontSize: 12 }}>Grouped like a quiet visual diary, not a noisy feed</p>
+            </div>
+            <span style={{ color: C.pink, fontWeight: 800 }}>Arcs</span>
           </div>
-          <span style={{ color: C.pink, fontWeight: 800 }}>Arcs</span>
-        </div>
+        )}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           {arcs.map((arc) => (
             <button key={arc.id} onClick={() => { setActiveArc(arc); setEntryIndex(0); }} style={{ border: "none", padding: 0, cursor: "pointer", textAlign: "left", borderRadius: 18, overflow: "hidden", background: C.white, boxShadow: `0 8px 24px ${C.shadow}` }}>
@@ -3144,24 +3184,27 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
           ))}
         </div>
 
-        {/* Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 3 }}>
-          {tabPosts.map(p => (
-            <div key={p.id} onClick={() => onOpenPost?.(p)} style={{ aspectRatio: "1", overflow: "hidden", position: "relative", borderRadius: 6, cursor: "pointer" }}>
-              <img src={p.image_url} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top,rgba(0,0,0,.45),transparent)", opacity: 0.95, display: "flex", alignItems: "flex-end", justifyContent: "space-around", padding: 6 }}>
-                <button onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/?post=${p.id}`).then(() => showToast("Post link copied!"))} style={{ border: "none", borderRadius: "50%", width: 28, height: 28, background: "rgba(255,255,255,.9)", cursor: "pointer" }}>↗</button>
-                <button onClick={() => setActiveTab("saved")} style={{ border: "none", borderRadius: "50%", width: 28, height: 28, background: "rgba(255,255,255,.9)", cursor: "pointer" }}>↧</button>
-                <button onClick={() => showToast("Open the post from Home to comment")} style={{ border: "none", borderRadius: "50%", width: 28, height: 28, background: "rgba(255,255,255,.9)", cursor: "pointer" }}>D</button>
+        {activeTab === "journeys" ? (
+          <ArcShelf posts={journeys} title="Journeys" onOpenPost={onOpenPost} showHeader={false} />
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 3 }}>
+            {tabPosts.map(p => (
+              <div key={p.id} onClick={() => onOpenPost?.(p)} style={{ aspectRatio: "1", overflow: "hidden", position: "relative", borderRadius: 6, cursor: "pointer" }}>
+                <img src={p.image_url} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top,rgba(0,0,0,.45),transparent)", opacity: 0.95, display: "flex", alignItems: "flex-end", justifyContent: "space-around", padding: 6 }}>
+                  <button onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(`${window.location.origin}/?post=${p.id}`).then(() => showToast("Post link copied!")); }} style={{ border: "none", borderRadius: "50%", width: 28, height: 28, background: "rgba(255,255,255,.9)", cursor: "pointer" }}>↗</button>
+                  <button onClick={(e) => { e.stopPropagation(); setActiveTab("saved"); }} style={{ border: "none", borderRadius: "50%", width: 28, height: 28, background: "rgba(255,255,255,.9)", cursor: "pointer" }}>↧</button>
+                  <button onClick={(e) => { e.stopPropagation(); onOpenPost?.(p); }} style={{ border: "none", borderRadius: "50%", width: 28, height: 28, background: "rgba(255,255,255,.9)", cursor: "pointer" }}>D</button>
+                </div>
               </div>
-            </div>
-          ))}
-          {tabPosts.length === 0 && (
-            <div style={{ gridColumn: "1/-1", textAlign: "center", padding: "30px 0" }}>
-              <p style={{ fontFamily: "'Playfair Display',Georgia,serif", color: C.brown, fontStyle: "italic" }}>{emptyText}</p>
-            </div>
-          )}
-        </div>
+            ))}
+            {tabPosts.length === 0 && (
+              <div style={{ gridColumn: "1/-1", textAlign: "center", padding: "30px 0" }}>
+                <p style={{ fontFamily: "'Playfair Display',Georgia,serif", color: C.brown, fontStyle: "italic" }}>{emptyText}</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       {storyIndex != null && recentStories[storyIndex] && (
         <StoryViewer
@@ -3328,18 +3371,24 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
             />
             <ArcShelf posts={posts} title={`${profile.full_name || profile.username || "Diary"}'s Personal Lore`} onOpenPost={onOpenPost} />
             <DiaryTravelMap posts={posts} title={`${profile.full_name || profile.username || "Diary"}'s Travel Map`} onPostClick={(post) => onOpenPost?.(post)} />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
               {["posts", "journeys", "quotes"].map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)} style={{ background: activeTab === tab ? C.dark : C.white, color: activeTab === tab ? C.cream : C.brown, border: `1px solid ${C.beige}`, borderRadius: 14, padding: "11px 10px", cursor: "pointer", fontWeight: 800, textTransform: "capitalize", boxShadow: `0 4px 14px ${C.shadow}` }}>{tab}</button>
               ))}
             </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginTop: 12 }}>
-              {visiblePosts.map(p => <img key={p.id} onClick={() => onOpenPost?.(p)} src={p.image_url} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8, cursor: "pointer" }} />)}
-            </div>
-            {visiblePosts.length === 0 && (
-              <div style={{ background: C.white, borderRadius: 22, padding: "34px 18px", textAlign: "center", boxShadow: `0 8px 24px ${C.shadow}` }}>
-                <p style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.brown, fontStyle: "italic" }}>{emptyCopy}</p>
-              </div>
+            {activeTab === "journeys" ? (
+              <ArcShelf posts={journeys} title="Journeys" onOpenPost={onOpenPost} showHeader={false} />
+            ) : (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginTop: 12 }}>
+                  {visiblePosts.map(p => <img key={p.id} onClick={() => onOpenPost?.(p)} src={p.image_url} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8, cursor: "pointer" }} />)}
+                </div>
+                {visiblePosts.length === 0 && (
+                  <div style={{ background: C.white, borderRadius: 22, padding: "34px 18px", textAlign: "center", boxShadow: `0 8px 24px ${C.shadow}` }}>
+                    <p style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.brown, fontStyle: "italic" }}>{emptyCopy}</p>
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
