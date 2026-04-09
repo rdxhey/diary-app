@@ -772,6 +772,7 @@ const HIDDEN_GEMS = [
     id: "gem-kyoto",
     country: "Japan",
     name: "Kamo River Tea Corner",
+    search_term: "Kyoto",
     description: "A quiet tea stop with river air and soft late-evening light.",
     sponsor_link: "https://diary-app-eight-beta.vercel.app/",
     image: "https://images.unsplash.com/photo-1515823662972-da6a2e4d3002?w=600&q=80",
@@ -782,6 +783,7 @@ const HIDDEN_GEMS = [
     id: "gem-nara",
     country: "Japan",
     name: "Lantern Path Bookshop",
+    search_term: "Nara",
     description: "Hidden books, paper textures, and slow nostalgic playlists.",
     sponsor_link: "https://diary-app-eight-beta.vercel.app/",
     image: "https://images.unsplash.com/photo-1516979187457-637abb4f9353?w=600&q=80",
@@ -792,6 +794,7 @@ const HIDDEN_GEMS = [
     id: "gem-hakone",
     country: "Japan",
     name: "Mist Onsen Viewpoint",
+    search_term: "Hakone",
     description: "A calm viewpoint where the mountain fog rolls in like film grain.",
     sponsor_link: "https://diary-app-eight-beta.vercel.app/",
     image: "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=600&q=80",
@@ -802,6 +805,7 @@ const HIDDEN_GEMS = [
     id: "gem-goa",
     country: "India",
     name: "Fontainhas Quiet Corner",
+    search_term: "Goa",
     description: "Pastel streets, old balconies, and soft afternoon stillness.",
     sponsor_link: "https://diary-app-eight-beta.vercel.app/",
     image: "https://images.unsplash.com/photo-1518509562904-e7ef99cdcc86?w=600&q=80",
@@ -812,6 +816,7 @@ const HIDDEN_GEMS = [
     id: "gem-jaipur",
     country: "India",
     name: "Pink City Chai Room",
+    search_term: "Jaipur",
     description: "A hidden tea room with dusty pink walls and slow evening chatter.",
     sponsor_link: "https://diary-app-eight-beta.vercel.app/",
     image: "https://images.unsplash.com/photo-1477587458883-47145ed94245?w=600&q=80",
@@ -822,6 +827,7 @@ const HIDDEN_GEMS = [
     id: "gem-kochi",
     country: "India",
     name: "Fort Kochi Rain Walk",
+    search_term: "Fort Kochi",
     description: "Sea breeze, colonial lanes, and monsoon light worth remembering.",
     sponsor_link: "https://diary-app-eight-beta.vercel.app/",
     image: "https://images.unsplash.com/photo-1593693397690-362cb9666fc2?w=600&q=80",
@@ -832,6 +838,7 @@ const HIDDEN_GEMS = [
     id: "gem-paris",
     country: "France",
     name: "Canal Notebook Cafe",
+    search_term: "Paris",
     description: "A canal-side spot for film notes, espresso, and quiet sketches.",
     sponsor_link: "https://diary-app-eight-beta.vercel.app/",
     image: "https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=600&q=80",
@@ -842,6 +849,7 @@ const HIDDEN_GEMS = [
     id: "gem-london",
     country: "United Kingdom",
     name: "Fog Lane Record Room",
+    search_term: "London",
     description: "Soft vinyl, rainy glass, and a warm corner to disappear into.",
     sponsor_link: "https://diary-app-eight-beta.vercel.app/",
     image: "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=600&q=80",
@@ -1050,7 +1058,7 @@ function DiaryTravelMap({ posts = [], title = "Travel Map", onPostClick, onOpenL
                 {visibleGems.map((gem) => (
                   <button
                     key={gem.id}
-                    onClick={() => onOpenLocation?.(gem.name)}
+                    onClick={() => onOpenLocation?.(gem.search_term || gem.name)}
                     style={{ border: `1px solid ${C.beige}`, background: C.beige, color: C.dark, borderRadius: 999, padding: "7px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
                   >
                     {gem.name}
@@ -2713,16 +2721,6 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
     ["Morning light", "morning"],
     ["Homesick", "home"],
   ];
-  const gemLocationMap = {
-    "gem-kyoto": "Kyoto",
-    "gem-nara": "Nara",
-    "gem-hakone": "Hakone",
-    "gem-goa": "Goa",
-    "gem-jaipur": "Jaipur",
-    "gem-kochi": "Kochi",
-    "gem-paris": "Paris",
-    "gem-london": "London",
-  };
   const visibleGems = useMemo(() => getGemsForCountry(currentCountry), [currentCountry]);
   const trending = useMemo(() => getTrendingLocationsForCountry(currentCountry, posts), [currentCountry, posts]);
 
@@ -2780,7 +2778,7 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
   };
 
   const loadByGem = async (gem) => {
-    const place = gemLocationMap[gem.id] || gem.name;
+    const place = gem.search_term || gem.name;
     setResults([]);
     setTitle(`${gem.name}`);
     let query = supabase.from("posts").select("*, profiles(username, avatar_url)").or(`location.ilike.%${place}%,caption.ilike.%${place}%`).limit(30);
