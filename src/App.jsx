@@ -40,6 +40,12 @@ const COUNTRY_OPTIONS = [
   ["🇦🇷", "Argentina"], ["🇨🇱", "Chile"], ["🇿🇦", "South Africa"], ["🇪🇬", "Egypt"], ["🇲🇦", "Morocco"],
 ];
 
+const getCountryOption = (country) => COUNTRY_OPTIONS.find(([, label]) => label === country);
+const formatCountryWithFlag = (country) => {
+  const match = getCountryOption(country);
+  return match ? `${match[0]} ${match[1]}` : country;
+};
+
 class AppErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -307,7 +313,7 @@ function Input({ placeholder, type = "text", value, onChange, icon, style = {}, 
 function CountryPicker({ value, onChange }) {
   const [query, setQuery] = useState(value || "");
   const filtered = COUNTRY_OPTIONS.filter(([, country]) => country.toLowerCase().includes(query.trim().toLowerCase()));
-  const selectedCountry = COUNTRY_OPTIONS.find(([, country]) => country === value);
+  const selectedCountry = getCountryOption(value);
 
   useEffect(() => {
     setQuery(value || "");
@@ -4500,7 +4506,7 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
       {sectionTitle("Location")}
       <div style={cardStyle}>
         <p style={{ margin: "0 0 8px", color: C.dark, fontWeight: 800 }}>Current detected country</p>
-        <p style={{ margin: "0 0 12px", color: C.brown }}>{currentCountry || "Not detected yet"}</p>
+        <p style={{ margin: "0 0 12px", color: C.brown }}>{currentCountry ? formatCountryWithFlag(currentCountry) : "Not detected yet"}</p>
         <CountryPicker value={countryDraft} onChange={setCountryDraft} />
         <button onClick={handleSaveLocation} style={{ marginTop: 10, width: "100%", border: "none", background: C.beige, borderRadius: 14, padding: "12px 14px", cursor: "pointer", color: C.dark, fontWeight: 800 }}>Save location</button>
       </div>
