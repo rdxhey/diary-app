@@ -3,7 +3,8 @@
 -- Travel Map, private accounts, seasonal feeds, film filters, and Journey Mode.
 
 alter table public.profiles
-  add column if not exists is_private boolean not null default false;
+  add column if not exists is_private boolean not null default false,
+  add column if not exists two_factor_backup_codes jsonb not null default '[]'::jsonb;
 
 alter table public.posts
   add column if not exists location_name text,

@@ -1228,11 +1228,106 @@ function LoginPage({ onBack, onSuccess, showToast }) {
 // ============================================================
 // POST CARD — REAL LIKES & BOOKMARKS
 // ============================================================
-function MfaChallengePage({ factorId, onLogout, onVerified, showToast }) {
+const BACKUP_CODE_COUNT = 8;
+const STORY_VIEW_MS = 4500;
+
+const getMfaBackupStorageKey = (userId) => `diary-mfa-backup-codes:${userId}`;
+const getMfaRecoveryBypassKey = (userId) => `diary-mfa-recovery-approved:${userId}`;
+
+const normalizeBackupHashes = (value) => {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+};
+
+const generateBackupCodes = () =>
+  Array.from({ length: BACKUP_CODE_COUNT }, () => {
+    const left = Math.random().toString(36).slice(2, 6).toUpperCase();
+    const right = Math.random().toString(36).slice(2, 6).toUpperCase();
+    return `${left}-${right}`;
+  });
+
+const hashBackupCode = async (value) => {
+  const payload = new TextEncoder().encode(value.trim().toUpperCase());
+  const digest = await crypto.subtle.digest("SHA-256", payload);
+  return Array.from(new Uint8Array(digest)).map(byte => byte.toString(16).padStart(2, "0")).join("");
+};
+
+const getStoredBackupHashes = (userId, profile) => {
+  const fromProfile = normalizeBackupHashes(profile?.two_factor_backup_codes);
+  if (fromProfile.length) return fromProfile;
+  if (!userId) return [];
+  try {
+    return normalizeBackupHashes(localStorage.getItem(getMfaBackupStorageKey(userId)));
+  } catch {
+    return [];
+  }
+};
+
+const setStoredBackupHashesLocal = (userId, hashes) => {
+  if (!userId) return;
+  try {
+    localStorage.setItem(getMfaBackupStorageKey(userId), JSON.stringify(hashes || []));
+  } catch {}
+};
+
+const setMfaRecoveryBypass = (userId, enabled) => {
+  if (!userId) return;
+  try {
+    if (enabled) sessionStorage.setItem(getMfaRecoveryBypassKey(userId), String(Date.now() + 12 * 60 * 60 * 1000));
+    else sessionStorage.removeItem(getMfaRecoveryBypassKey(userId));
+  } catch {}
+};
+
+const hasMfaRecoveryBypass = (userId) => {
+  if (!userId) return false;
+  try {
+    const raw = sessionStorage.getItem(getMfaRecoveryBypassKey(userId));
+    if (!raw) return false;
+    const expires = Number(raw);
+    if (!Number.isFinite(expires) || expires < Date.now()) {
+      sessionStorage.removeItem(getMfaRecoveryBypassKey(userId));
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+function MfaChallengePage({ factorId, onLogout, onVerified, onUseBackupCode, showToast }) {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState("totp");
 
   const handleVerify = async () => {
+    if (mode === "backup") {
+      if (!code.trim()) {
+        showToast("Enter one of your backup codes", "error");
+        return;
+      }
+      setLoading(true);
+      try {
+        const used = await onUseBackupCode?.(code.trim());
+        if (!used) {
+          showToast("That backup code was not valid", "error");
+          return;
+        }
+        showToast("Backup code accepted");
+        onVerified?.();
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (!factorId || code.trim().length < 6) {
       showToast("Enter the 6-digit code from your authenticator app", "error");
       return;
@@ -1264,18 +1359,23 @@ function MfaChallengePage({ factorId, onLogout, onVerified, showToast }) {
         </div>
         <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 27, color: C.dark, margin: "0 0 6px" }}>Two-factor authentication</h2>
         <p style={{ color: C.brown, fontSize: 13, marginBottom: 24, lineHeight: 1.6 }}>
-          Enter the 6-digit code from Google Authenticator or Microsoft Authenticator to continue.
+          {mode === "totp"
+            ? "Enter the 6-digit code from Google Authenticator or Microsoft Authenticator to continue."
+            : "Enter one of your saved backup codes to recover access."}
         </p>
         <div style={{ background: C.white, borderRadius: 22, boxShadow: `0 8px 24px ${C.shadow}`, padding: 18, display: "grid", gap: 12 }}>
           <Input
-            placeholder="6-digit code"
+            placeholder={mode === "totp" ? "6-digit code" : "ABCD-EFGH"}
             value={code}
-            onChange={e => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            onChange={e => setCode(mode === "totp" ? e.target.value.replace(/\D/g, "").slice(0, 6) : e.target.value.toUpperCase())}
             icon="2FA"
           />
-          <Btn variant="pink" onClick={handleVerify} loading={loading} disabled={code.trim().length < 6} style={{ width: "100%", borderRadius: 16, padding: "14px 16px" }}>
-            Verify and continue
+          <Btn variant="pink" onClick={handleVerify} loading={loading} disabled={mode === "totp" ? code.trim().length < 6 : !code.trim()} style={{ width: "100%", borderRadius: 16, padding: "14px 16px" }}>
+            {mode === "totp" ? "Verify and continue" : "Use backup code"}
           </Btn>
+          <button onClick={() => { setCode(""); setMode(prev => prev === "totp" ? "backup" : "totp"); }} style={{ border: "none", background: "none", cursor: "pointer", color: C.brown, fontWeight: 700, fontSize: 12 }}>
+            {mode === "totp" ? "Use a backup code instead" : "Use authenticator code instead"}
+          </button>
         </div>
       </div>
     </div>
@@ -2620,8 +2720,12 @@ function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showT
   const [likeDetails, setLikeDetails] = useState({});
   const [viewersByStory, setViewersByStory] = useState({});
   const [holdProgress, setHoldProgress] = useState(0);
+  const [storyProgress, setStoryProgress] = useState(0);
+  const [storyPaused, setStoryPaused] = useState(false);
   const holdTimerRef = useRef(null);
   const holdStartRef = useRef(0);
+  const storyTimerRef = useRef(null);
+  const storyStartRef = useRef(0);
   const story = stories[index];
   const isOwner = Boolean(currentUser?.id && story?.user_id === currentUser.id);
 
@@ -2678,6 +2782,34 @@ function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showT
     })();
   }, [stories, currentUser?.id]);
 
+  useEffect(() => {
+    if (!story || storyPaused) return;
+    if (storyTimerRef.current) clearInterval(storyTimerRef.current);
+    storyStartRef.current = performance.now();
+    setStoryProgress(0);
+    storyTimerRef.current = setInterval(() => {
+      const progress = Math.min((performance.now() - storyStartRef.current) / STORY_VIEW_MS, 1);
+      setStoryProgress(progress);
+      if (progress >= 1) {
+        clearInterval(storyTimerRef.current);
+        storyTimerRef.current = null;
+        setStoryProgress(0);
+        setIndex((current) => {
+          if (current >= stories.length - 1) {
+            onClose?.();
+            return current;
+          }
+          return current + 1;
+        });
+      }
+    }, 40);
+
+    return () => {
+      if (storyTimerRef.current) clearInterval(storyTimerRef.current);
+      storyTimerRef.current = null;
+    };
+  }, [story?.id, storyPaused, stories.length, onClose]);
+
   if (!story) return null;
 
   const clearHold = () => {
@@ -2711,6 +2843,7 @@ function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showT
 
   const startHold = () => {
     if (!story || appreciatedIds.has(story.id) || holdTimerRef.current) return;
+    setStoryPaused(true);
     holdStartRef.current = performance.now();
     holdTimerRef.current = setInterval(() => {
       const progress = Math.min((performance.now() - holdStartRef.current) / 2000, 1);
@@ -2722,7 +2855,25 @@ function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showT
     }, 16);
   };
 
-  const stopHold = () => clearHold();
+  const stopHold = () => {
+    clearHold();
+    setStoryPaused(false);
+  };
+
+  const goPrevStory = () => {
+    if (index <= 0) return;
+    setStoryProgress(0);
+    setIndex((value) => value - 1);
+  };
+
+  const goNextStory = () => {
+    setStoryProgress(0);
+    if (index >= stories.length - 1) {
+      onClose?.();
+      return;
+    }
+    setIndex((value) => value + 1);
+  };
 
   const viewers = viewersByStory[story.id] || [];
   const appreciators = likeDetails[story.id] || [];
@@ -2731,7 +2882,17 @@ function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showT
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.95)", zIndex: 10000, display: "flex", flexDirection: "column" }}>
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${stories.length},1fr)`, gap: 4, padding: "10px 12px 0" }}>
         {stories.map((item, itemIndex) => (
-          <div key={item.id || itemIndex} style={{ height: 3, borderRadius: 999, background: itemIndex <= index ? "rgba(255,255,255,.95)" : "rgba(255,255,255,.18)" }} />
+          <div key={item.id || itemIndex} style={{ height: 3, borderRadius: 999, background: "rgba(255,255,255,.18)", overflow: "hidden" }}>
+            <div
+              style={{
+                height: "100%",
+                borderRadius: 999,
+                width: itemIndex < index ? "100%" : itemIndex === index ? `${storyProgress * 100}%` : "0%",
+                background: "rgba(255,255,255,.95)",
+                transition: itemIndex === index ? "none" : "width .18s ease",
+              }}
+            />
+          </div>
         ))}
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", color: C.white }}>
@@ -2749,7 +2910,7 @@ function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showT
         <button onClick={onClose} style={{ border: "none", background: "none", color: C.white, fontSize: 24, cursor: "pointer" }}>✕</button>
       </div>
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: 12 }}>
-        {index > 0 && <button onClick={() => setIndex((value) => value - 1)} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", border: "none", width: 38, height: 38, borderRadius: "50%", background: "rgba(255,255,255,.16)", color: C.white, cursor: "pointer" }}>‹</button>}
+        {index > 0 && <button onClick={goPrevStory} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", border: "none", width: 38, height: 38, borderRadius: "50%", background: "rgba(255,255,255,.16)", color: C.white, cursor: "pointer" }}>‹</button>}
         <div style={{ width: "100%", maxWidth: 430, position: "relative" }}>
           <DiaryEntryVisual post={story} aspectRatio="4/5" radius={24} objectFit="contain" />
           {story.caption && (
@@ -2760,7 +2921,7 @@ function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showT
             </div>
           )}
         </div>
-        {index < stories.length - 1 && <button onClick={() => setIndex((value) => value + 1)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", border: "none", width: 38, height: 38, borderRadius: "50%", background: "rgba(255,255,255,.16)", color: C.white, cursor: "pointer" }}>›</button>}
+        <button onClick={goNextStory} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", border: "none", width: 38, height: 38, borderRadius: "50%", background: "rgba(255,255,255,.16)", color: C.white, cursor: "pointer" }}>›</button>
       </div>
       <div style={{ padding: "0 16px 18px", color: C.white }}>
         <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
@@ -3722,12 +3883,17 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
   const [mfaSetup, setMfaSetup] = useState(null);
   const [mfaCode, setMfaCode] = useState("");
   const [mfaBusy, setMfaBusy] = useState(false);
+  const [backupCodes, setBackupCodes] = useState([]);
 
   useEffect(() => {
     setPrivateAccount(Boolean(profile?.is_private || profile?.private_account));
     setCountryDraft(currentCountry || profile?.country || "");
     setEmailDraft(currentUser?.email || "");
   }, [profile, currentCountry, currentUser]);
+
+  useEffect(() => {
+    setBackupCodes([]);
+  }, [currentUser?.id]);
 
   useEffect(() => {
     localStorage.setItem("diary-settings", JSON.stringify(prefs));
@@ -3863,6 +4029,22 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
     await saveProfileFields({ default_privacy: nextPrefs.defaultPrivacy, comments_from: nextPrefs.commentsFrom });
   };
 
+  const persistBackupHashes = async (hashes) => {
+    if (!currentUser) return;
+    setStoredBackupHashesLocal(currentUser.id, hashes);
+    const { data, error } = await supabase.from("profiles").upsert({ id: currentUser.id, two_factor_backup_codes: hashes }).select("*").single();
+    if (!error && data) onProfileUpdated?.(data);
+  };
+
+  const clearBackupHashes = async () => {
+    if (!currentUser) return;
+    setStoredBackupHashesLocal(currentUser.id, []);
+    try {
+      const { data } = await supabase.from("profiles").upsert({ id: currentUser.id, two_factor_backup_codes: [] }).select("*").single();
+      if (data) onProfileUpdated?.(data);
+    } catch {}
+  };
+
   const handleEnableMfa = async () => {
     if (!currentUser) return;
     setMfaBusy(true);
@@ -3904,6 +4086,10 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
         code: mfaCode.trim(),
       });
       if (error) throw error;
+      const generatedCodes = generateBackupCodes();
+      const hashedCodes = await Promise.all(generatedCodes.map(hashBackupCode));
+      await persistBackupHashes(hashedCodes);
+      setBackupCodes(generatedCodes);
       setMfaSetup(null);
       setMfaCode("");
       await loadMfaState();
@@ -3921,9 +4107,11 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
     try {
       const { error } = await supabase.auth.mfa.unenroll({ factorId: mfaFactor.id });
       if (error) throw error;
+      await clearBackupHashes();
       setMfaFactor(null);
       setMfaSetup(null);
       setMfaCode("");
+      setBackupCodes([]);
       setMfaStatus("off");
       showToast("Two-factor authentication disabled");
     } catch (err) {
@@ -4015,6 +4203,29 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
             <button onClick={handleEnableMfa} disabled={mfaBusy || mfaStatus === "loading"} style={{ border: "none", background: C.beige, borderRadius: 14, padding: "12px 14px", cursor: "pointer", textAlign: "left", color: C.dark, fontWeight: 700, opacity: mfaBusy || mfaStatus === "loading" ? 0.7 : 1 }}>
               {mfaStatus === "loading" ? "Checking security..." : "Enable 2FA"}
             </button>
+          </div>
+        )}
+        {backupCodes.length > 0 && (
+          <div style={{ marginTop: 12, background: C.cream, border: `1px solid ${C.beige}`, borderRadius: 16, padding: 14 }}>
+            <p style={{ margin: "0 0 6px", color: C.dark, fontWeight: 800 }}>Backup codes</p>
+            <p style={{ margin: "0 0 10px", color: C.brown, fontSize: 12, lineHeight: 1.6 }}>
+              Save these once. Each backup code can be used one time if you lose access to your authenticator app.
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+              {backupCodes.map((item) => (
+                <div key={item} style={{ background: C.white, borderRadius: 12, border: `1px solid ${C.beige}`, padding: "10px 12px", color: C.dark, fontWeight: 800, textAlign: "center", letterSpacing: 0.6 }}>
+                  {item}
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <button onClick={() => navigator.clipboard?.writeText(backupCodes.join("\n")).then(() => showToast("Backup codes copied"))} style={{ border: "none", background: C.dark, color: C.white, borderRadius: 14, padding: "11px 12px", cursor: "pointer", fontWeight: 800 }}>
+                Copy codes
+              </button>
+              <button onClick={() => setBackupCodes([])} style={{ border: `1px solid ${C.beige}`, background: C.white, color: C.dark, borderRadius: 14, padding: "11px 12px", cursor: "pointer", fontWeight: 700 }}>
+                I saved them
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -4520,6 +4731,7 @@ export default function DiaryApp() {
   const fetchProfile = async (userId) => {
     const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
     setProfile(data);
+    return data;
   };
 
   const routeAuthenticatedSession = async (session) => {
@@ -4527,6 +4739,7 @@ export default function DiaryApp() {
       setCurrentUser(null);
       setProfile(null);
       setMfaFactorId(null);
+      setMfaRecoveryBypass(currentUser?.id, false);
       setScreen("landing");
       return;
     }
@@ -4536,7 +4749,7 @@ export default function DiaryApp() {
 
     try {
       const { data: aalData, error: aalError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-      if (!aalError && aalData?.nextLevel === "aal2" && aalData?.currentLevel !== "aal2") {
+      if (!aalError && aalData?.nextLevel === "aal2" && aalData?.currentLevel !== "aal2" && !hasMfaRecoveryBypass(session.user.id)) {
         const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors();
         if (!factorsError) {
           const factor = factorsData?.totp?.[0] || factorsData?.all?.find(item => item.factor_type === "totp" && item.status === "verified");
@@ -4616,10 +4829,27 @@ export default function DiaryApp() {
   }, []);
 
   const handleLogout = async () => {
+    setMfaRecoveryBypass(currentUser?.id, false);
     await supabase.auth.signOut();
     setScreen("landing");
     setPage("home");
     showToast("Signed out. See you soon! 🌸");
+  };
+
+  const consumeBackupCode = async (input) => {
+    if (!currentUser?.id) return false;
+    const existing = getStoredBackupHashes(currentUser.id, profile);
+    if (!existing.length) return false;
+    const hashed = await hashBackupCode(input);
+    if (!existing.includes(hashed)) return false;
+    const next = existing.filter((item) => item !== hashed);
+    setStoredBackupHashesLocal(currentUser.id, next);
+    try {
+      const { data } = await supabase.from("profiles").upsert({ id: currentUser.id, two_factor_backup_codes: next }).select("*").single();
+      if (data) setProfile(data);
+    } catch {}
+    setMfaRecoveryBypass(currentUser.id, true);
+    return true;
   };
 
   const navPages = ["home", "quotes", "discover", "create", "memories", "profile"];
@@ -4650,7 +4880,7 @@ export default function DiaryApp() {
       {screen === "landing" && <LandingPage onSignup={() => setScreen("signup")} onLogin={() => setScreen("login")} />}
       {screen === "signup" && <SignupPage onBack={() => setScreen("landing")} onSuccess={user => { setCurrentUser(user); setScreen("app"); setPage("home"); }} showToast={showToast} />}
       {screen === "login" && <LoginPage onBack={() => setScreen("landing")} onSuccess={() => { pendingLoginCelebrationRef.current = true; }} showToast={showToast} />}
-      {screen === "mfa" && <MfaChallengePage factorId={mfaFactorId} onLogout={handleLogout} onVerified={async () => {
+      {screen === "mfa" && <MfaChallengePage factorId={mfaFactorId} onLogout={handleLogout} onUseBackupCode={consumeBackupCode} onVerified={async () => {
         const { data: { session } } = await supabase.auth.getSession();
         await routeAuthenticatedSession(session);
       }} showToast={showToast} />}
