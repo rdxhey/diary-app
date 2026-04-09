@@ -3044,10 +3044,11 @@ const buildArcsFromPosts = (posts = []) => {
   });
   return Array.from(groups.entries()).map(([title, entries], index) => {
     const sorted = [...entries].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+    const firstLocation = sorted[0]?.location || sorted[0]?.location_name || "Diary route";
     return {
       id: `${title}-${index}`,
       title,
-      summary: `${sorted.length} entry${sorted.length === 1 ? "" : "ies"}`,
+      summary: `${sorted.length} entr${sorted.length === 1 ? "y" : "ies"} · ${firstLocation}`,
       cover: sorted[0]?.image_url,
       entries: sorted,
     };
@@ -3058,6 +3059,7 @@ function ArcShelf({ posts = [], title = "Personal Lore", onOpenPost, showHeader 
   const arcs = buildArcsFromPosts(posts);
   const [activeArc, setActiveArc] = useState(null);
   const [entryIndex, setEntryIndex] = useState(0);
+  const [viewerMode, setViewerMode] = useState("pages");
 
   if (!arcs.length) return null;
 
@@ -3075,7 +3077,7 @@ function ArcShelf({ posts = [], title = "Personal Lore", onOpenPost, showHeader 
         )}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           {arcs.map((arc) => (
-            <button key={arc.id} onClick={() => { setActiveArc(arc); setEntryIndex(0); }} style={{ border: "none", padding: 0, cursor: "pointer", textAlign: "left", borderRadius: 18, overflow: "hidden", background: C.white, boxShadow: `0 8px 24px ${C.shadow}` }}>
+            <button key={arc.id} onClick={() => { setActiveArc(arc); setEntryIndex(0); setViewerMode("pages"); }} style={{ border: "none", padding: 0, cursor: "pointer", textAlign: "left", borderRadius: 18, overflow: "hidden", background: C.white, boxShadow: `0 8px 24px ${C.shadow}` }}>
               <div style={{ aspectRatio: "4/5", position: "relative", overflow: "hidden" }}>
                 {arc.cover ? <img src={arc.cover} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "100%", height: "100%", background: C.beige }} />}
                 <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top,rgba(0,0,0,.58),transparent 55%)" }} />
@@ -3091,17 +3093,51 @@ function ArcShelf({ posts = [], title = "Personal Lore", onOpenPost, showHeader 
       {activeArc && activeArc.entries[entryIndex] && (
         <div style={{ position: "fixed", inset: 0, background: C.dark, zIndex: 9999, display: "flex", flexDirection: "column" }}>
           <PageHeader title={activeArc.title} subtitle={`${entryIndex + 1} of ${activeArc.entries.length}`} onBack={() => setActiveArc(null)} />
-          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: 16 }}>
-            {entryIndex > 0 && <button onClick={() => setEntryIndex(i => i - 1)} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", width: 38, height: 38, borderRadius: "50%", border: "none", background: "rgba(255,255,255,.18)", color: C.white, cursor: "pointer" }}>‹</button>}
-            <div style={{ width: "100%", maxWidth: 420, background: "rgba(255,255,255,.06)", borderRadius: 24, overflow: "hidden" }}>
-              <DiaryEntryVisual post={activeArc.entries[entryIndex]} aspectRatio="4/5" objectFit="contain" />
-              <div style={{ padding: 16, color: C.white }}>
-                <p style={{ margin: "0 0 8px", fontFamily: "'Playfair Display',Georgia,serif", fontSize: 22 }}>{activeArc.entries[entryIndex].caption || "A quiet page from this arc."}</p>
-                <p style={{ margin: 0, opacity: 0.8, fontSize: 12 }}>{activeArc.entries[entryIndex].location || activeArc.title}</p>
-                <DiaryMetadataLine post={activeArc.entries[entryIndex]} style={{ color: "rgba(255,255,255,.72)" }} />
-              </div>
+          <div style={{ padding: "0 16px 12px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, background: "rgba(255,255,255,.08)", borderRadius: 999, padding: 4 }}>
+              {["pages", "route"].map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setViewerMode(mode)}
+                  style={{ border: "none", borderRadius: 999, padding: "10px 12px", cursor: "pointer", background: viewerMode === mode ? C.white : "transparent", color: viewerMode === mode ? C.dark : C.white, fontWeight: 800, textTransform: "capitalize" }}
+                >
+                  {mode}
+                </button>
+              ))}
             </div>
-            {entryIndex < activeArc.entries.length - 1 && <button onClick={() => setEntryIndex(i => i + 1)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", width: 38, height: 38, borderRadius: "50%", border: "none", background: "rgba(255,255,255,.18)", color: C.white, cursor: "pointer" }}>›</button>}
+          </div>
+          <div style={{ flex: 1, display: "flex", alignItems: viewerMode === "pages" ? "center" : "stretch", justifyContent: "center", position: "relative", padding: 16, overflowY: "auto" }}>
+            {viewerMode === "pages" ? (
+              <>
+                {entryIndex > 0 && <button onClick={() => setEntryIndex(i => i - 1)} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", width: 38, height: 38, borderRadius: "50%", border: "none", background: "rgba(255,255,255,.18)", color: C.white, cursor: "pointer" }}>‹</button>}
+                <div style={{ width: "100%", maxWidth: 420, background: "rgba(255,255,255,.06)", borderRadius: 24, overflow: "hidden" }}>
+                  <DiaryEntryVisual post={activeArc.entries[entryIndex]} aspectRatio="4/5" objectFit="contain" />
+                  <div style={{ padding: 16, color: C.white }}>
+                    <p style={{ margin: "0 0 8px", fontFamily: "'Playfair Display',Georgia,serif", fontSize: 22 }}>{activeArc.entries[entryIndex].caption || "A quiet page from this arc."}</p>
+                    <p style={{ margin: 0, opacity: 0.8, fontSize: 12 }}>{activeArc.entries[entryIndex].location || activeArc.title}</p>
+                    <DiaryMetadataLine post={activeArc.entries[entryIndex]} style={{ color: "rgba(255,255,255,.72)" }} />
+                  </div>
+                </div>
+                {entryIndex < activeArc.entries.length - 1 && <button onClick={() => setEntryIndex(i => i + 1)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", width: 38, height: 38, borderRadius: "50%", border: "none", background: "rgba(255,255,255,.18)", color: C.white, cursor: "pointer" }}>›</button>}
+              </>
+            ) : (
+              <div style={{ width: "100%", maxWidth: 430 }}>
+                <DiaryTravelMap posts={activeArc.entries} title={`${activeArc.title} route`} onPostClick={(post) => { setViewerMode("pages"); setEntryIndex(activeArc.entries.findIndex((entry) => entry.id === post.id)); }} />
+                <div style={{ display: "grid", gap: 8 }}>
+                  {activeArc.entries.map((entry, idx) => (
+                    <button
+                      key={entry.id}
+                      onClick={() => { setEntryIndex(idx); setViewerMode("pages"); }}
+                      style={{ border: "none", background: "rgba(255,255,255,.08)", color: C.white, borderRadius: 18, padding: 12, textAlign: "left", cursor: "pointer" }}
+                    >
+                      <p style={{ margin: "0 0 4px", fontWeight: 800 }}>{idx + 1}. {entry.location || entry.location_name || activeArc.title}</p>
+                      <p style={{ margin: "0 0 4px", fontSize: 12, opacity: 0.78 }}>{new Date(entry.created_at).toLocaleDateString()}</p>
+                      <p style={{ margin: 0, fontSize: 13, opacity: 0.9 }}>{(entry.caption || "Open this diary page").slice(0, 88)}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <div style={{ padding: "0 16px 20px" }}>
             <button onClick={() => onOpenPost?.(activeArc.entries[entryIndex])} style={{ width: "100%", border: "none", borderRadius: 999, padding: "12px 16px", cursor: "pointer", background: C.white, color: C.dark, fontWeight: 800 }}>Open this entry</button>
