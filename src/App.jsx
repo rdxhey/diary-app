@@ -2312,138 +2312,39 @@ function CreatePage({ currentUser, showToast, setPage }) {
 // ============================================================
 // DISCOVER PAGE
 // ============================================================
-function DiscoverPage({ showToast, onOpenProfile }) {
-  const [search, setSearch] = useState("");
-  const [results, setResults] = useState([]);
-  const [posts, setPosts] = useState([]);
-  const [title, setTitle] = useState("Explore Diary");
-  const [searching, setSearching] = useState(false);
-  const trending = ["Kyoto", "Takayama", "Hakone", "Nara", "Shirakawa-go", "Nikko"];
-  const vibes = ["🌸 Peaceful", "🏔️ Adventure", "🍜 Food", "🌿 Nature", "🏯 Cultural", "🌊 Coastal"];
-
-  const handleSearch = async () => {
-    if (!search.trim()) return;
-    setSearching(true);
-    const term = search.trim();
-    const [{ data: users }, { data: matchedPosts }] = await Promise.all([
-      supabase.from("profiles").select("*").or(`username.ilike.%${term}%,full_name.ilike.%${term}%,location.ilike.%${term}%`).limit(10),
-      supabase.from("posts").select("*, profiles(username, avatar_url)").or(`location.ilike.%${term}%,caption.ilike.%${term}%,category.ilike.%${term}%`).limit(30),
-    ]);
-    setResults(users || []);
-    setPosts(matchedPosts || []);
-    setTitle(`Results for "${term}"`);
-    setSearching(false);
-  };
-
-  const loadByLocation = async (location) => {
-    setTitle(`Trending in ${location}`);
-    const { data } = await supabase.from("posts").select("*, profiles(username, avatar_url)").ilike("location", `%${location}%`).limit(30);
-    setPosts(data || []);
-  };
-
-  const loadByVibe = async (label, vibe) => {
-    setTitle(`${label} posts`);
-    const { data } = await supabase.from("posts").select("*, profiles(username, avatar_url)").eq("category", vibe).limit(30);
-    setPosts(data || []);
-  };
-
-  return (
-    <div style={{ padding: "56px 16px 100px", background: C.cream, minHeight: "100vh" }}>
-      <h1 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 25, color: C.dark, marginBottom: 18 }}>Discover</h1>
-      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-        <Input placeholder="Search people, places..." value={search} onChange={e => setSearch(e.target.value)} icon="🔍" style={{ flex: 1 }} />
-        <Btn variant="primary" onClick={handleSearch} loading={searching} style={{ borderRadius: 12, padding: "13px 18px" }}>Go</Btn>
-      </div>
-
-      {results.length > 0 && (
-        <div style={{ marginBottom: 24 }}>
-          {results.map(u => (
-            <div key={u.id} onClick={() => onOpenProfile?.(u.id)} style={{ display: "flex", alignItems: "center", gap: 12, background: C.white, borderRadius: 14, padding: "12px", marginBottom: 10, boxShadow: `0 2px 10px ${C.shadow}`, cursor: "pointer" }}>
-              <Avatar src={u.avatar_url} size={44} />
-              <div>
-                <p style={{ margin: 0, fontFamily: "'Lato',sans-serif", fontWeight: 700, fontSize: 14, color: C.dark }}>{displayHandle(u.username)}</p>
-                {u.bio && <p style={{ margin: 0, fontSize: 12, color: C.brown, fontFamily: "'Lato',sans-serif" }}>{u.bio}</p>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Moment of the Day */}
-      <div style={{ marginBottom: 22 }}>
-        <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>✦ Moment of the Day</h3>
-        <div onClick={() => loadByLocation("Nikko")} style={{ borderRadius: 20, overflow: "hidden", position: "relative", height: 190, cursor: "pointer" }}>
-          <img src="https://images.unsplash.com/photo-1545569341-9eb8b30979d9?w=600&q=80" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top,#4A372888,transparent)" }} />
-          <div style={{ position: "absolute", bottom: 16, left: 16 }}>
-            <p style={{ color: C.cream, fontFamily: "'Playfair Display',Georgia,serif", fontSize: 16, fontWeight: 700, margin: 0 }}>Autumn in Nikko</p>
-            <p style={{ color: C.softPink, fontSize: 12, margin: "3px 0 0" }}>📍 Nikko, Tochigi</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Trending */}
-      <div style={{ marginBottom: 22 }}>
-        <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>📍 Trending Locations</h3>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {trending.map(t => (
-            <span key={t} style={{ background: C.white, border: `1px solid ${C.tan}`, borderRadius: 20, padding: "7px 13px", fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.dark, cursor: "pointer", boxShadow: `0 2px 8px ${C.shadow}` }}>📍 {t}</span>
-          ))}
-        </div>
-      </div>
-
-      {/* Vibes */}
-      <div style={{ marginBottom: 22 }}>
-        <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>Browse by Vibe</h3>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-          {trending.map(t => (
-            <button key={t} onClick={() => loadByLocation(t)} style={{ background: C.white, border: `1px solid ${C.tan}`, borderRadius: 20, padding: "7px 13px", fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.dark, cursor: "pointer" }}>{t}</button>
-          ))}
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          {[
-            ["Peaceful", "rural"],
-            ["Adventure", "adventure"],
-            ["Food", "food"],
-            ["Nature", "nature"],
-            ["Cultural", "cultural"],
-            ["Coastal", "coastal"],
-          ].map(([label, vibe]) => (
-            <button key={vibe} onClick={() => loadByVibe(label, vibe)} style={{ background: C.white, borderRadius: 14, padding: "15px", border: `1px solid ${C.beige}`, cursor: "pointer", boxShadow: `0 2px 10px ${C.shadow}`, fontFamily: "'Lato',sans-serif", fontSize: 14, color: C.dark, fontWeight: 700, textAlign: "center" }}>{label}</button>
-          ))}
-          {vibes.map(v => (
-            <div key={v} style={{ background: C.white, borderRadius: 14, padding: "15px", border: `1px solid ${C.beige}`, cursor: "pointer", boxShadow: `0 2px 10px ${C.shadow}`, fontFamily: "'Lato',sans-serif", fontSize: 14, color: C.dark, fontWeight: 700, textAlign: "center" }}>{v}</div>
-          ))}
-        </div>
-      </div>
-      {posts.length > 0 && (
-        <div style={{ marginBottom: 22 }}>
-          <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>{title}</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
-            {posts.map(p => <img key={p.id} src={p.image_url} alt="" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8 }} />)}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+function DiscoverPage(props) {
+  return <DiscoverPage2 {...props} forceMode="discover" />;
 }
 
 function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMode = "discover" }) {
   const [search, setSearch] = useState("");
   const [results, setResults] = useState([]);
   const [posts, setPosts] = useState([]);
-  const [title, setTitle] = useState(forceMode === "quotes" ? "Discover Diary Quotes" : "Explore Diary");
+  const [title, setTitle] = useState(forceMode === "quotes" ? "Find inspiration and share your creations" : "Explore Diary");
   const [searching, setSearching] = useState(false);
   const [mode, setMode] = useState(forceMode);
   const trending = ["Kyoto", "Takayama", "Hakone", "Nara", "Shirakawa-go", "Nikko"];
   const vibeOptions = [
-    ["🌸 Peaceful", "rural"],
-    ["🏔️ Adventure", "adventure"],
-    ["🍜 Food", "food"],
-    ["🌿 Nature", "nature"],
-    ["🏯 Cultural", "cultural"],
-    ["🌊 Coastal", "coastal"],
+    ["Peaceful", "rural"],
+    ["Adventure", "adventure"],
+    ["Food", "food"],
+    ["Nature", "nature"],
+    ["Cultural", "cultural"],
+    ["Coastal", "coastal"],
   ];
+  const quoteCollections = [
+    ["Quiet notes", "quiet"],
+    ["Travel thoughts", "travel"],
+    ["Night pages", "night"],
+    ["Soft love", "love"],
+    ["Morning light", "morning"],
+    ["Homesick", "home"],
+  ];
+  const gemLocationMap = {
+    "gem-kyoto": "Kyoto",
+    "gem-nara": "Nara",
+    "gem-hakone": "Hakone",
+  };
 
   const loadFeed = useCallback(async () => {
     let query = supabase.from("posts").select("*, profiles(username, avatar_url)").order("created_at", { ascending: false }).limit(30);
@@ -2472,16 +2373,45 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
   };
 
   const loadByLocation = async (location) => {
+    setResults([]);
     setTitle(`Trending in ${location}`);
     let query = supabase.from("posts").select("*, profiles(username, avatar_url)").ilike("location", `%${location}%`).limit(30);
     if (mode === "quotes") query = query.eq("category", "quote");
+    else query = query.neq("category", "quote");
     const { data } = await query;
     setPosts(data || []);
   };
 
   const loadByVibe = async (label, vibe) => {
+    setResults([]);
     setTitle(`${label} posts`);
-    const { data } = await supabase.from("posts").select("*, profiles(username, avatar_url)").eq("category", vibe).limit(30);
+    let query = supabase.from("posts").select("*, profiles(username, avatar_url)").eq("category", vibe).limit(30);
+    if (mode === "quotes") query = query.eq("category", "quote");
+    const { data } = await query;
+    setPosts(data || []);
+  };
+
+  const loadByGem = async (gem) => {
+    const place = gemLocationMap[gem.id] || gem.name;
+    setResults([]);
+    setTitle(`${gem.name}`);
+    let query = supabase.from("posts").select("*, profiles(username, avatar_url)").or(`location.ilike.%${place}%,caption.ilike.%${place}%`).limit(30);
+    if (mode === "quotes") query = query.eq("category", "quote");
+    else query = query.neq("category", "quote");
+    const { data } = await query;
+    setPosts(data || []);
+  };
+
+  const loadQuoteCollection = async (label, keyword) => {
+    setResults([]);
+    setMode("quotes");
+    setPage?.("quotes");
+    setTitle(label);
+    const { data } = await supabase.from("posts")
+      .select("*, profiles(username, avatar_url)")
+      .eq("category", "quote")
+      .or(`caption.ilike.%${keyword}%,location.ilike.%${keyword}%`)
+      .limit(30);
     setPosts(data || []);
   };
 
@@ -2490,11 +2420,11 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
 
   return (
     <div style={{ padding: "56px 16px 100px", background: "transparent", minHeight: "100vh" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, gap: 12 }}>
         <h1 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 25, color: C.dark, margin: 0 }}>{mode === "quotes" ? "Discover Diary Quotes" : "Discover"}</h1>
-        <div style={{ display: "flex", background: C.white, border: `1px solid ${C.beige}`, borderRadius: 999, padding: 4 }}>
-          <button onClick={() => { setMode("discover"); setPage?.("discover"); }} style={{ background: mode === "discover" ? C.beige : "transparent", border: "none", padding: "8px 12px", borderRadius: 999, cursor: "pointer", fontWeight: 700 }}>Discover</button>
-          <button onClick={() => { setMode("quotes"); setPage?.("quotes"); }} style={{ background: mode === "quotes" ? C.beige : "transparent", border: "none", padding: "8px 12px", borderRadius: 999, cursor: "pointer", fontWeight: 700 }}>Diary Quotes</button>
+        <div style={{ display: "flex", background: C.white, border: `1px solid ${C.beige}`, borderRadius: 999, padding: 4, flexShrink: 0 }}>
+          <button onClick={() => { setMode("discover"); setPage?.("discover"); }} style={{ background: mode === "discover" ? C.beige : "transparent", border: "none", padding: "8px 12px", borderRadius: 999, cursor: "pointer", fontWeight: 700, color: C.dark }}>Discover</button>
+          <button onClick={() => { setMode("quotes"); setPage?.("quotes"); }} style={{ background: mode === "quotes" ? C.beige : "transparent", border: "none", padding: "8px 12px", borderRadius: 999, cursor: "pointer", fontWeight: 700, color: C.dark }}>Diary Quotes</button>
         </div>
       </div>
       <div style={{ background: C.white, border: `1px solid ${C.beige}`, borderRadius: 18, padding: 14, marginBottom: 18, boxShadow: `0 10px 28px ${C.shadow}` }}>
@@ -2502,7 +2432,7 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
         <p style={{ margin: 0, color: C.brown, fontSize: 12 }}>{posts.length ? `${posts.length} diary moments are ready to explore.` : "Search or open a location, vibe, or quote trail."}</p>
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-        <Input placeholder={mode === "quotes" ? "Search quotes..." : "Search people, places..."} value={search} onChange={e => setSearch(e.target.value)} icon="🔍" style={{ flex: 1 }} />
+        <Input placeholder={mode === "quotes" ? "Search quotes..." : "Search people, places..."} value={search} onChange={e => setSearch(e.target.value)} icon="Search" style={{ flex: 1 }} />
         <Btn variant="primary" onClick={handleSearch} loading={searching} style={{ borderRadius: 12, padding: "13px 18px" }}>Go</Btn>
       </div>
       {results.length > 0 && (
@@ -2520,24 +2450,39 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
       )}
       {hero && (
         <div onClick={() => onOpenPost?.(hero)} style={{ marginBottom: 22, cursor: "pointer" }}>
-          <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>{mode === "quotes" ? "Featured diary quote" : "Today’s Moment"}</h3>
+          <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>{mode === "quotes" ? "Featured diary quote" : "Today's Moment"}</h3>
           <div style={{ borderRadius: 20, overflow: "hidden", position: "relative", minHeight: 190, background: C.white }}>
             {hero.image_url ? <img src={hero.image_url} style={{ width: "100%", height: 190, objectFit: "cover", filter: FILTERS[hero.filter_type || "none"] || "none" }} /> : <div style={{ padding: 24, minHeight: 190, display: "flex", alignItems: "center" }}><p style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 24, color: C.dark }}>{hero.caption}</p></div>}
             <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top,#4A372888,transparent)" }} />
             <div style={{ position: "absolute", bottom: 16, left: 16, right: 16 }}>
               <p style={{ color: C.cream, fontFamily: "'Playfair Display',Georgia,serif", fontSize: 18, fontWeight: 700, margin: 0 }}>{hero.caption?.slice(0, 70) || "Open this Diary"}</p>
-              <p style={{ color: C.softPink, fontSize: 12, margin: "3px 0 0" }}>📍 {hero.location || "Diary"}</p>
+              <p style={{ color: C.softPink, fontSize: 12, margin: "3px 0 0" }}>{hero.location || "Diary"}</p>
             </div>
           </div>
         </div>
       )}
-      {mode !== "quotes" && (
+      {mode !== "quotes" ? (
         <>
           <div style={{ marginBottom: 18 }}>
-            <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>📍 Trending Locations</h3>
+            <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>Trending Locations</h3>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {trending.map(t => (
-                <button key={t} onClick={() => loadByLocation(t)} style={{ background: C.white, border: `1px solid ${C.tan}`, borderRadius: 20, padding: "7px 13px", fontSize: 12, color: C.dark, cursor: "pointer", boxShadow: `0 2px 8px ${C.shadow}` }}>📍 {t}</button>
+                <button key={t} onClick={() => loadByLocation(t)} style={{ background: C.white, border: `1px solid ${C.tan}`, borderRadius: 20, padding: "7px 13px", fontSize: 12, color: C.dark, cursor: "pointer", boxShadow: `0 2px 8px ${C.shadow}` }}>{t}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{ marginBottom: 18 }}>
+            <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>Hidden Gems</h3>
+            <div style={{ display: "grid", gap: 12 }}>
+              {HIDDEN_GEMS.map((gem) => (
+                <button key={gem.id} onClick={() => loadByGem(gem)} style={{ display: "grid", gridTemplateColumns: "84px 1fr auto", gap: 12, alignItems: "center", border: "none", background: C.white, borderRadius: 18, padding: 10, boxShadow: `0 8px 24px ${C.shadow}`, cursor: "pointer", textAlign: "left" }}>
+                  <img src={gem.image} alt="" style={{ width: 84, height: 84, objectFit: "cover", borderRadius: 14, display: "block" }} />
+                  <div>
+                    <p style={{ margin: "0 0 4px", color: C.dark, fontWeight: 800, fontSize: 14 }}>{gem.name}</p>
+                    <p style={{ margin: 0, color: C.brown, fontSize: 12, lineHeight: 1.45 }}>{gem.description}</p>
+                  </div>
+                  <span style={{ color: C.pink, fontWeight: 900, fontSize: 18 }}>Open</span>
+                </button>
               ))}
             </div>
           </div>
@@ -2550,6 +2495,17 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
             </div>
           </div>
         </>
+      ) : (
+        <div style={{ marginBottom: 20 }}>
+          <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>Quote collections</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {quoteCollections.map(([label, keyword]) => (
+              <button key={keyword} onClick={() => loadQuoteCollection(label, keyword)} style={{ background: C.white, borderRadius: 14, padding: "15px", border: `1px solid ${C.beige}`, cursor: "pointer", boxShadow: `0 2px 10px ${C.shadow}`, fontSize: 14, color: C.dark, fontWeight: 700, textAlign: "center" }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
       <div style={{ marginBottom: 22 }}>
         <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>{title}</h3>
@@ -2601,6 +2557,33 @@ function DiaryQuotesPage(props) {
   return <DiscoverPage2 {...props} forceMode="quotes" />;
 }
 
+async function enrichProfilesForSheet(ids = []) {
+  const uniqueIds = [...new Set(ids.filter(Boolean))];
+  if (!uniqueIds.length) return [];
+  const { data: users } = await supabase.from("profiles").select("id, username, full_name, avatar_url, website").in("id", uniqueIds);
+  const [postsRes, followersRes, followingRes] = await Promise.all([
+    supabase.from("posts").select("user_id").in("user_id", uniqueIds),
+    supabase.from("follows").select("following_id").in("following_id", uniqueIds),
+    supabase.from("follows").select("follower_id").in("follower_id", uniqueIds),
+  ]);
+
+  const postCounts = {};
+  const followerCounts = {};
+  const followingCounts = {};
+  (postsRes.data || []).forEach((row) => { postCounts[row.user_id] = (postCounts[row.user_id] || 0) + 1; });
+  (followersRes.data || []).forEach((row) => { followerCounts[row.following_id] = (followerCounts[row.following_id] || 0) + 1; });
+  (followingRes.data || []).forEach((row) => { followingCounts[row.follower_id] = (followingCounts[row.follower_id] || 0) + 1; });
+
+  const byId = new Map((users || []).map((user) => [user.id, {
+    ...user,
+    posts_count: postCounts[user.id] || 0,
+    followers_count: followerCounts[user.id] || 0,
+    following_count: followingCounts[user.id] || 0,
+  }]));
+
+  return uniqueIds.map((id) => byId.get(id)).filter(Boolean);
+}
+
 function FollowListSheet({ open, title, users, onClose, onOpenProfile }) {
   if (!open) return null;
   return (
@@ -2616,10 +2599,14 @@ function FollowListSheet({ open, title, users, onClose, onOpenProfile }) {
         ) : users.map(user => (
           <button key={user.id} onClick={() => { onClose(); onOpenProfile?.(user.id); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, border: "none", borderBottom: `1px solid ${C.beige}`, background: "none", padding: "12px 0", cursor: "pointer", textAlign: "left" }}>
             <Avatar src={user.avatar_url} size={44} active />
-            <div>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{ margin: 0, color: C.dark, fontWeight: 800 }}>{displayHandle(user.username)}</p>
               <p style={{ margin: "2px 0 0", color: C.brown, fontSize: 12 }}>{user.full_name || "Diary user"}</p>
+              <p style={{ margin: "4px 0 0", color: C.tan, fontSize: 11 }}>
+                {user.posts_count || 0} posts · {user.followers_count || 0} followers · {user.following_count || 0} following
+              </p>
             </div>
+            <span style={{ color: C.tan, fontSize: 18 }}>{">"}</span>
           </button>
         ))}
       </div>
@@ -3234,7 +3221,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
       setFollowSheet({ open: true, title: kind === "followers" ? "Followers" : "Following", users: [] });
       return;
     }
-    const { data: users } = await supabase.from("profiles").select("id, username, full_name, avatar_url").in("id", ids);
+    const users = await enrichProfilesForSheet(ids);
     setFollowSheet({ open: true, title: kind === "followers" ? "Followers" : "Following", users: users || [] });
   };
 
@@ -3476,7 +3463,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
       setFollowSheet({ open: true, title: kind === "followers" ? "Followers" : "Following", users: [] });
       return;
     }
-    const { data: users } = await supabase.from("profiles").select("id, username, full_name, avatar_url").in("id", ids);
+    const users = await enrichProfilesForSheet(ids);
     setFollowSheet({ open: true, title: kind === "followers" ? "Followers" : "Following", users: users || [] });
   };
 
