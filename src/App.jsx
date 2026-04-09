@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -28,6 +28,36 @@ const FILTERS = {
   bw: "grayscale(1) contrast(1.08) brightness(.98)",
   none: "none",
 };
+
+class AppErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, message: "" };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, message: error?.message || "This screen hit a rendering issue." };
+  }
+
+  componentDidCatch(error) {
+    console.error("Diary runtime error", error);
+  }
+
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    return (
+      <div style={{ minHeight: "100vh", background: C.cream, padding: "64px 20px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: "100%", maxWidth: 420, background: C.white, borderRadius: 24, padding: 24, boxShadow: `0 16px 42px ${C.shadow}`, textAlign: "center" }}>
+          <h2 style={{ margin: "0 0 8px", fontFamily: "'Playfair Display',Georgia,serif", color: C.dark }}>Diary hit a rendering issue</h2>
+          <p style={{ margin: "0 0 18px", color: C.brown, fontSize: 13, lineHeight: 1.6 }}>{this.state.message}</p>
+          <button onClick={() => window.location.reload()} style={{ border: "none", borderRadius: 999, padding: "12px 18px", background: C.dark, color: C.white, cursor: "pointer", fontWeight: 800 }}>
+            Reload Diary
+          </button>
+        </div>
+      </div>
+    );
+  }
+}
 
 const getThemePalette = (theme) => {
   if (theme?.mode === "dark") {
@@ -2623,6 +2653,13 @@ const getRecentMemoryPosts = (posts = [], max = 12) => {
   return recent.slice(0, max);
 };
 
+const getArchivedMemoryPosts = (posts = [], max = 18) => {
+  const now = Date.now();
+  const sorted = [...(posts || [])].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  const archived = sorted.filter((post) => now - new Date(post.created_at || 0).getTime() > STORY_WINDOW_MS);
+  return archived.slice(0, max);
+};
+
 const buildStoryGroupsByUser = (posts = []) => {
   const recent = getRecentMemoryPosts(posts, 18);
   const groups = new Map();
@@ -2697,6 +2734,48 @@ function StoryTray({ title = "Memories", items = [], onOpenItem, onCreate, empty
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+function MemoryArchiveGrid({ title = "Memory Archive", posts = [], onOpenPost, emptyText = "No archived memories yet" }) {
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <h3 style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, fontSize: 20 }}>{title}</h3>
+        <span style={{ color: C.tan, fontSize: 11 }}>{posts.length ? `${posts.length} archived` : emptyText}</span>
+      </div>
+      {posts.length ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+          {posts.map((post) => (
+            <button
+              key={post.id}
+              onClick={() => onOpenPost?.(post)}
+              style={{ border: "none", padding: 0, cursor: "pointer", textAlign: "left", background: C.white, borderRadius: 16, overflow: "hidden", boxShadow: `0 8px 22px ${C.shadow}` }}
+            >
+              <div style={{ aspectRatio: "1", background: C.beige }}>
+                {post.image_url ? (
+                  <img src={post.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", filter: FILTERS[post.filter_type || "none"] || "none" }} />
+                ) : (
+                  <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+                    <p style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, fontSize: 16 }}>{(post.caption || "Diary").slice(0, 24)}</p>
+                  </div>
+                )}
+              </div>
+              <div style={{ padding: 8 }}>
+                <p style={{ margin: "0 0 3px", fontSize: 11, color: C.dark, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {post.location || post.location_name || "Diary memory"}
+                </p>
+                <p style={{ margin: 0, fontSize: 10, color: C.brown }}>{new Date(post.created_at).toLocaleDateString()}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div style={{ background: C.white, borderRadius: 18, padding: 18, textAlign: "center", boxShadow: `0 8px 24px ${C.shadow}` }}>
+          <p style={{ margin: 0, color: C.brown, fontStyle: "italic", fontFamily: "'Playfair Display',Georgia,serif" }}>{emptyText}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -3039,6 +3118,7 @@ function ArcShelf({ posts = [], title = "Personal Lore", onOpenPost, showHeader 
 function MemoriesPage({ currentUser, showToast, onOpenPost, onOpenProfile, setPage }) {
   const [saved, setSaved] = useState([]);
   const [recentStories, setRecentStories] = useState([]);
+  const [archivedStories, setArchivedStories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(null);
   const [storyIndex, setStoryIndex] = useState(null);
@@ -3053,6 +3133,7 @@ function MemoriesPage({ currentUser, showToast, onOpenPost, onOpenProfile, setPa
       ]);
       setSaved((bookmarkData || []).map(b => b.posts).filter(Boolean));
       setRecentStories(getRecentMemoryPosts(ownPosts || []));
+      setArchivedStories(getArchivedMemoryPosts(ownPosts || []));
       setLoading(false);
     })();
   }, [currentUser]);
@@ -3100,6 +3181,14 @@ function MemoriesPage({ currentUser, showToast, onOpenPost, onOpenProfile, setPa
             ))}
           </div>
         </>
+      )}
+      {currentUser && !loading && (
+        <MemoryArchiveGrid
+          title="Your Memory Archive"
+          posts={archivedStories}
+          onOpenPost={onOpenPost}
+          emptyText="No archived memories yet"
+        />
       )}
       {storyIndex != null && recentStories[storyIndex] && (
         <StoryViewer
@@ -3171,6 +3260,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
   const journeys = posts.filter(p => p.location || p.category === "adventure" || p.category === "cultural");
   const quotes = posts.filter(p => p.category === "quote");
   const recentStories = getRecentMemoryPosts(posts);
+  const archivedStories = getArchivedMemoryPosts(posts, 12);
   const seenStoryIds = getSeenStoryIds(currentUser?.id);
   const tabPosts = activeTab === "saved" ? savedPosts : activeTab === "journeys" ? journeys : activeTab === "quotes" ? quotes : posts.filter(p => p.category !== "quote");
   const emptyText = activeTab === "saved" ? "No saved memories yet" : activeTab === "journeys" ? "No journeys yet" : activeTab === "quotes" ? "No diary quotes yet" : "No moments yet";
@@ -3373,6 +3463,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
           onCreate={() => setPage("create")}
           emptyText="No live memories"
         />
+        <MemoryArchiveGrid title="Your archived memories" posts={archivedStories} onOpenPost={onOpenPost} emptyText="Your older memories will gather here" />
 
         <ArcShelf posts={posts} title="Your Personal Lore" onOpenPost={onOpenPost} />
         <DiaryTravelMap posts={posts} title="Your Travel Map" onPostClick={(post) => onOpenPost?.(post)} />
@@ -3506,6 +3597,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
   const journeys = posts.filter(p => p.location || p.category === "adventure" || p.category === "cultural");
   const quotes = posts.filter(p => p.category === "quote");
   const recentStories = getRecentMemoryPosts(posts);
+  const archivedStories = getArchivedMemoryPosts(posts, 12);
   const seenStoryIds = getSeenStoryIds(currentUser?.id);
   const visiblePosts = activeTab === "journeys" ? journeys : activeTab === "quotes" ? quotes : posts.filter(p => p.category !== "quote");
   const emptyCopy = activeTab === "journeys" ? "No journeys shared yet" : activeTab === "quotes" ? "No diary quotes shared yet" : "No public moments yet";
@@ -3570,6 +3662,12 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
               }))}
               onOpenItem={setStoryIndex}
               emptyText="No live memories"
+            />
+            <MemoryArchiveGrid
+              title={`${profile.full_name || profile.username || "Diary"}'s archive`}
+              posts={archivedStories}
+              onOpenPost={onOpenPost}
+              emptyText="No archived memories yet"
             />
             <ArcShelf posts={posts} title={`${profile.full_name || profile.username || "Diary"}'s Personal Lore`} onOpenPost={onOpenPost} />
             <DiaryTravelMap posts={posts} title={`${profile.full_name || profile.username || "Diary"}'s Travel Map`} onPostClick={(post) => onOpenPost?.(post)} />
@@ -4462,6 +4560,8 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
   const [filter, setFilter] = useState("all");
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [reportReason, setReportReason] = useState("");
+  const [chatWallpaper, setChatWallpaper] = useState(() => localStorage.getItem("diary-chat-wallpaper") || "");
+  const wallpaperRef = useRef(null);
 
   const loadConversations = useCallback(async () => {
     if (!currentUser) return;
@@ -4496,6 +4596,11 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [currentUser, active, loadConversations]);
+
+  useEffect(() => {
+    if (chatWallpaper) localStorage.setItem("diary-chat-wallpaper", chatWallpaper);
+    else localStorage.removeItem("diary-chat-wallpaper");
+  }, [chatWallpaper]);
 
   useEffect(() => {
     if (!currentUser || search.trim().length < 2) { setPeople([]); return; }
@@ -4573,6 +4678,18 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
     return /circle|group|club|travel/i.test(c.full_name || c.username || "");
   });
 
+  const pickWallpaper = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setChatWallpaper(String(reader.result || ""));
+      showToast?.("Chat wallpaper updated");
+      e.target.value = "";
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <div style={{ background: "transparent", minHeight: "100vh", paddingBottom: active ? 0 : 100 }}>
       {active ? (
@@ -4585,9 +4702,26 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
             }
             subtitle={active.full_name || "Diary message"}
             onBack={() => setActive(null)}
-            right={<button onClick={() => onOpenProfile?.(active.id)} style={{ border: "none", background: "none", padding: 0, cursor: "pointer" }}><Avatar src={active.avatar_url} size={38} active /></button>}
+            right={
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button onClick={() => wallpaperRef.current?.click()} style={{ border: "none", background: "none", cursor: "pointer", color: C.brown, fontWeight: 800, fontSize: 12 }}>
+                  Wallpaper
+                </button>
+                <button onClick={() => onOpenProfile?.(active.id)} style={{ border: "none", background: "none", padding: 0, cursor: "pointer" }}><Avatar src={active.avatar_url} size={38} active /></button>
+              </div>
+            }
           />
-          <div style={{ flex: 1, padding: "16px 14px 90px", overflowY: "auto", background: `linear-gradient(180deg, ${C.cream}, ${C.white})` }}>
+          <input ref={wallpaperRef} type="file" accept="image/*" style={{ display: "none" }} onChange={pickWallpaper} />
+          <div
+            style={{
+              flex: 1,
+              padding: "16px 14px 90px",
+              overflowY: "auto",
+              background: chatWallpaper
+                ? `linear-gradient(rgba(250,247,242,.84), rgba(255,255,255,.9)), url(${chatWallpaper}) center/cover fixed`
+                : `linear-gradient(180deg, ${C.cream}, ${C.white})`,
+            }}
+          >
             {messages.length === 0 && (
               <div style={{ textAlign: "center", padding: "50px 20px", color: C.brown }}>
                 <div style={{ display: "flex", justifyContent: "center" }}><Avatar src={active.avatar_url} size={72} active /></div>
@@ -4595,15 +4729,30 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
                 <p style={{ fontSize: 13 }}>Send a private message to {displayHandle(active.username, "this user")}.</p>
               </div>
             )}
-            {messages.map(m => (
+            {messages.map((m, idx) => (
               <div key={m.id} style={{ display: "flex", justifyContent: m.sender_id === currentUser.id ? "flex-end" : "flex-start", marginBottom: 9 }}>
-                <button onClick={() => m.sender_id === currentUser.id && setSelectedMessage(m)} style={{
-                  background: m.sender_id === currentUser.id ? `linear-gradient(135deg,${C.pink},${C.dark})` : C.white,
-                  color: m.sender_id === currentUser.id ? C.white : C.dark,
-                  borderRadius: m.sender_id === currentUser.id ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
-                  padding: "10px 14px", maxWidth: "76%", fontFamily: "'Lato',sans-serif", fontSize: 14,
-                  boxShadow: `0 4px 14px ${C.shadow}`, border: "none", cursor: m.sender_id === currentUser.id ? "pointer" : "default", textAlign: "left",
-                }}>{m.content}</button>
+                <button
+                  onClick={() => setSelectedMessage(m)}
+                  style={{
+                    background: m.sender_id === currentUser.id ? `linear-gradient(135deg,${C.pink},${C.dark})` : C.white,
+                    color: m.sender_id === currentUser.id ? C.white : C.dark,
+                    borderRadius: m.sender_id === currentUser.id ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                    padding: "10px 14px",
+                    maxWidth: "76%",
+                    fontFamily: "'Lato',sans-serif",
+                    fontSize: 14,
+                    boxShadow: `0 4px 14px ${C.shadow}`,
+                    border: "none",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <div>{m.content}</div>
+                  <div style={{ marginTop: 6, fontSize: 10, opacity: 0.78 }}>
+                    {new Date(m.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                    {m.sender_id === currentUser.id ? ` · ${idx === messages.length - 1 ? "Seen" : "Sent"}` : ""}
+                  </div>
+                </button>
               </div>
             ))}
           </div>
@@ -4857,42 +5006,44 @@ export default function DiaryApp() {
   );
 
   return (
-    <div className="diary-paper" style={{ width: "100%", maxWidth: 480, margin: "0 auto", background: C.cream, minHeight: "100vh", position: "relative", overflowX: "hidden", boxShadow: `0 0 0 1px ${C.beige}`, backgroundImage: theme.mode === "custom" && theme.backgroundImage ? `linear-gradient(rgba(0,0,0,${theme.tone === "dark" ? 0.35 : 0.12}),rgba(0,0,0,${theme.tone === "dark" ? 0.45 : 0.08})), url(${theme.backgroundImage})` : undefined, backgroundSize: "cover", backgroundPosition: "center top", backgroundRepeat: "no-repeat", backgroundAttachment: "fixed" }}>
-      <FontLoader />
-      <LovableVibeStyle />
+    <AppErrorBoundary>
+      <div className="diary-paper" style={{ width: "100%", maxWidth: 480, margin: "0 auto", background: C.cream, minHeight: "100vh", position: "relative", overflowX: "hidden", boxShadow: `0 0 0 1px ${C.beige}`, backgroundImage: theme.mode === "custom" && theme.backgroundImage ? `linear-gradient(rgba(0,0,0,${theme.tone === "dark" ? 0.35 : 0.12}),rgba(0,0,0,${theme.tone === "dark" ? 0.45 : 0.08})), url(${theme.backgroundImage})` : undefined, backgroundSize: "cover", backgroundPosition: "center top", backgroundRepeat: "no-repeat", backgroundAttachment: "fixed" }}>
+        <FontLoader />
+        <LovableVibeStyle />
 
-      <Toast msg={toast.msg} type={toast.type} />
-      {showSignInStorm && <SakuraStorm onDone={() => setShowSignInStorm(false)} />}
+        <Toast msg={toast.msg} type={toast.type} />
+        {showSignInStorm && <SakuraStorm onDone={() => setShowSignInStorm(false)} />}
 
-      {screen === "landing" && <LandingPage onSignup={() => setScreen("signup")} onLogin={() => setScreen("login")} />}
-      {screen === "signup" && <SignupPage onBack={() => setScreen("landing")} onSuccess={user => { setCurrentUser(user); setScreen("app"); setPage("home"); }} showToast={showToast} />}
-      {screen === "login" && <LoginPage onBack={() => setScreen("landing")} onSuccess={() => { pendingLoginCelebrationRef.current = true; }} showToast={showToast} />}
-      {screen === "mfa" && <MfaChallengePage factorId={mfaFactorId} onLogout={handleLogout} onUseBackupCode={consumeBackupCode} onVerified={async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        await routeAuthenticatedSession(session);
-      }} showToast={showToast} />}
+        {screen === "landing" && <LandingPage onSignup={() => setScreen("signup")} onLogin={() => setScreen("login")} />}
+        {screen === "signup" && <SignupPage onBack={() => setScreen("landing")} onSuccess={user => { setCurrentUser(user); setScreen("app"); setPage("home"); }} showToast={showToast} />}
+        {screen === "login" && <LoginPage onBack={() => setScreen("landing")} onSuccess={() => { pendingLoginCelebrationRef.current = true; }} showToast={showToast} />}
+        {screen === "mfa" && <MfaChallengePage factorId={mfaFactorId} onLogout={handleLogout} onUseBackupCode={consumeBackupCode} onVerified={async () => {
+          const { data: { session } } = await supabase.auth.getSession();
+          await routeAuthenticatedSession(session);
+        }} showToast={showToast} />}
 
-      {screen === "app" && (
-        <>
-          {page === "home" && <HomePage currentUser={currentUser} profile={profile} currentCountry={currentCountry} setPage={setPage} showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} />}
-          {page === "quotes" && <DiaryQuotesPage showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} setPage={setPage} />}
-          {page === "discover" && <DiscoverPage2 showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} setPage={setPage} />}
-          {page === "create" && <CreatePage currentUser={currentUser} showToast={showToast} setPage={setPage} />}
-          {page === "memories" && <MemoriesPage currentUser={currentUser} showToast={showToast} onOpenPost={openPost} onOpenProfile={openProfile} setPage={setPage} />}
-          {page === "profile" && <ProfilePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onLogout={handleLogout} onProfileUpdated={setProfile} onOpenPost={openPost} onOpenProfile={openProfile} />}
-          {page === "publicProfile" && <PublicProfilePage profileId={viewProfileId} currentUser={currentUser} setPage={setPage} showToast={showToast} onMessageUser={setDmInitialUser} onOpenPost={openPost} onOpenProfile={openProfile} />}
-          {page === "settings" && <SettingsPage onLogout={handleLogout} setPage={setPage} showToast={showToast} currentUser={currentUser} profile={profile} onProfileUpdated={setProfile} theme={theme} setTheme={setTheme} onThemeImage={handleThemeImage} currentCountry={currentCountry} setCurrentCountry={setCurrentCountry} />}
-          {page === "adminReports" && <AdminReportsPage setPage={setPage} showToast={showToast} />}
-          {page === "blockedUsers" && <BlockedUsersPage currentUser={currentUser} setPage={setPage} showToast={showToast} onOpenProfile={openProfile} />}
-          {page === "creatorAnalytics" && <CreatorAnalyticsPage currentUser={currentUser} setPage={setPage} />}
-          {page === "advertiseDiary" && <AdvertiseOnDiaryPage currentUser={currentUser} setPage={setPage} showToast={showToast} />}
-          {page === "diaryPro" && <DiaryProPage setPage={setPage} />}
-          {page === "notifications" && <NotificationsPage currentUser={currentUser} setPage={setPage} onOpenProfile={openProfile} />}
-          {page === "dms" && <DMsPage2 currentUser={currentUser} setPage={setPage} showToast={showToast} initialUser={dmInitialUser} onOpenProfile={openProfile} />}
-          {page === "postViewer" && <PostViewerPage post={focusedPost} setPage={setPage} showToast={showToast} />}
-          {showNav && <BottomNav2 page={page} setPage={setPage} />}
-        </>
-      )}
-    </div>
+        {screen === "app" && (
+          <>
+            {page === "home" && <HomePage currentUser={currentUser} profile={profile} currentCountry={currentCountry} setPage={setPage} showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} />}
+            {page === "quotes" && <DiaryQuotesPage showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} setPage={setPage} />}
+            {page === "discover" && <DiscoverPage2 showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} setPage={setPage} />}
+            {page === "create" && <CreatePage currentUser={currentUser} showToast={showToast} setPage={setPage} />}
+            {page === "memories" && <MemoriesPage currentUser={currentUser} showToast={showToast} onOpenPost={openPost} onOpenProfile={openProfile} setPage={setPage} />}
+            {page === "profile" && <ProfilePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onLogout={handleLogout} onProfileUpdated={setProfile} onOpenPost={openPost} onOpenProfile={openProfile} />}
+            {page === "publicProfile" && <PublicProfilePage profileId={viewProfileId} currentUser={currentUser} setPage={setPage} showToast={showToast} onMessageUser={setDmInitialUser} onOpenPost={openPost} onOpenProfile={openProfile} />}
+            {page === "settings" && <SettingsPage onLogout={handleLogout} setPage={setPage} showToast={showToast} currentUser={currentUser} profile={profile} onProfileUpdated={setProfile} theme={theme} setTheme={setTheme} onThemeImage={handleThemeImage} currentCountry={currentCountry} setCurrentCountry={setCurrentCountry} />}
+            {page === "adminReports" && <AdminReportsPage setPage={setPage} showToast={showToast} />}
+            {page === "blockedUsers" && <BlockedUsersPage currentUser={currentUser} setPage={setPage} showToast={showToast} onOpenProfile={openProfile} />}
+            {page === "creatorAnalytics" && <CreatorAnalyticsPage currentUser={currentUser} setPage={setPage} />}
+            {page === "advertiseDiary" && <AdvertiseOnDiaryPage currentUser={currentUser} setPage={setPage} showToast={showToast} />}
+            {page === "diaryPro" && <DiaryProPage setPage={setPage} />}
+            {page === "notifications" && <NotificationsPage currentUser={currentUser} setPage={setPage} onOpenProfile={openProfile} />}
+            {page === "dms" && <DMsPage2 currentUser={currentUser} setPage={setPage} showToast={showToast} initialUser={dmInitialUser} onOpenProfile={openProfile} />}
+            {page === "postViewer" && <PostViewerPage post={focusedPost} setPage={setPage} showToast={showToast} />}
+            {showNav && <BottomNav2 page={page} setPage={setPage} />}
+          </>
+        )}
+      </div>
+    </AppErrorBoundary>
   );
 }
