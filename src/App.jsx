@@ -3897,6 +3897,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
 // ============================================================
 function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessageUser, onOpenPost, onOpenProfile, onOpenLocation, currentCountry }) {
   const [profile, setProfile] = useState(null);
+  const [loaded, setLoaded] = useState(false);
   const [posts, setPosts] = useState([]);
   const [isFollowing, setIsFollowing] = useState(false);
   const [relatedAccounts, setRelatedAccounts] = useState([]);
@@ -3920,6 +3921,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
       setPosts(postData || []);
       setIsFollowing(Boolean(followData));
       setStats({ followers: followerCount || 0, following: followingCount || 0 });
+      setLoaded(true);
     })();
   }, [profileId, currentUser]);
 
@@ -4007,7 +4009,21 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
     showToast("Report sent to Diary");
   };
 
-  if (!profile) return <div style={{ padding: "80px 16px", background: C.cream, minHeight: "100vh", color: C.brown }}>Loading profile...</div>;
+  if (!loaded && !profile) return <div style={{ padding: "80px 16px", background: C.cream, minHeight: "100vh", color: C.brown }}>Loading profile...</div>;
+  if (loaded && !profile) {
+    return (
+      <div style={{ background: "transparent", minHeight: "100vh", paddingBottom: 100 }}>
+        <PageHeader title="Diary account" subtitle="Unavailable" onBack={() => setPage("home")} />
+        <div style={{ padding: 16 }}>
+          <div style={{ background: C.white, borderRadius: 24, padding: "36px 22px", textAlign: "center", boxShadow: `0 10px 30px ${C.shadow}` }}>
+            <h3 style={{ margin: "0 0 8px", fontFamily: "'Playfair Display',Georgia,serif", color: C.dark }}>This account is no longer available</h3>
+            <p style={{ margin: "0 0 18px", color: C.brown, fontSize: 13, lineHeight: 1.6 }}>The profile was deleted or is no longer accessible.</p>
+            <Btn variant="secondary" onClick={() => setPage("home")} style={{ borderRadius: 999 }}>Back home</Btn>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const isPrivate = Boolean(profile.is_private || profile.private_account);
   const canViewDiary = !isPrivate || isFollowing || currentUser?.id === profileId;
@@ -4492,12 +4508,29 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
 
   const handleDeleteAccount = async () => {
     if (!currentUser || !confirm("Delete your Diary account data? This removes your posts, comments, bookmarks and profile.")) return;
-    await supabase.from("comments").delete().eq("user_id", currentUser.id);
-    await supabase.from("likes").delete().eq("user_id", currentUser.id);
-    await supabase.from("bookmarks").delete().eq("user_id", currentUser.id);
-    await supabase.from("posts").delete().eq("user_id", currentUser.id);
-    await supabase.from("profiles").delete().eq("id", currentUser.id);
+    if (!confirm("This permanently removes your public profile and Diary data from the app. Continue?")) return;
+    const userId = currentUser.id;
+    const operations = await Promise.allSettled([
+      supabase.from("comments").delete().eq("user_id", userId),
+      supabase.from("likes").delete().eq("user_id", userId),
+      supabase.from("bookmarks").delete().eq("user_id", userId),
+      supabase.from("posts").delete().eq("user_id", userId),
+      supabase.from("messages").delete().or(`sender_id.eq.${userId},receiver_id.eq.${userId}`),
+      supabase.from("follows").delete().or(`follower_id.eq.${userId},following_id.eq.${userId}`),
+      supabase.from("notifications").delete().or(`user_id.eq.${userId},from_user_id.eq.${userId}`),
+      supabase.from("blocks").delete().or(`blocker_id.eq.${userId},blocked_id.eq.${userId}`),
+      supabase.from("reports").delete().or(`reporter_id.eq.${userId},reported_user_id.eq.${userId}`),
+      supabase.from("profiles").delete().eq("id", userId),
+    ]);
+    const failed = operations
+      .map((result) => result.status === "fulfilled" ? result.value?.error : result.reason)
+      .filter(Boolean);
+    if (failed.length) {
+      showToast(failed[0]?.message || "Could not fully delete account data", "error");
+      return;
+    }
     localStorage.removeItem("diary-settings");
+    localStorage.removeItem("diary-chat-wallpaper");
     showToast("Account data deleted");
     onLogout();
   };
@@ -5329,7 +5362,7 @@ export default function DiaryApp() {
   };
 
   const fetchProfile = async (userId) => {
-    const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
+    const { data } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
     setProfile(data);
     return data;
   };
@@ -5460,10 +5493,18 @@ export default function DiaryApp() {
 
   const navPages = ["home", "quotes", "discover", "create", "memories", "profile"];
   const showNav = navPages.includes(page);
-  const openProfile = (id) => {
+  const openProfile = async (id) => {
     if (!id) return;
     if (id === currentUser?.id) setPage("profile");
-    else { setViewProfileId(id); setPage("publicProfile"); }
+    else {
+      const { data } = await supabase.from("profiles").select("id").eq("id", id).maybeSingle();
+      if (!data) {
+        showToast("This account is no longer available", "error");
+        return;
+      }
+      setViewProfileId(id);
+      setPage("publicProfile");
+    }
   };
 
   if (screen === "loading") return (
