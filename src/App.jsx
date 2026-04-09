@@ -131,10 +131,11 @@ function LovableVibeStyle() {
         background:
           radial-gradient(circle at 18px 18px, rgba(212,197,176,0.10) 0 5px, transparent 6px),
           radial-gradient(circle at 58px 58px, rgba(232,134,154,0.06) 0 4px, transparent 5px),
-          #FAF7F2;
+          ${C.cream};
         background-size: 72px 72px;
         -webkit-font-smoothing: antialiased;
         overscroll-behavior-y: none;
+        color: ${C.dark};
       }
       html { scroll-behavior: smooth; }
       button, input, textarea { -webkit-tap-highlight-color: transparent; }
@@ -312,6 +313,7 @@ function DiaryMetadataLine({ post, style = {} }) {
 
 function DiaryEntryVisual({ post = {}, aspectRatio = "4/3", radius = 0, maxHeight, onClick, objectFit = "cover" }) {
   const overlayText = String(post.overlay_text || "").trim();
+  const atmosphericStamp = String(post.atmospheric_stamp || "").trim();
   const overlayX = normalizeOverlayPoint(post.overlay_x, 0.5);
   const overlayY = normalizeOverlayPoint(post.overlay_y, 0.78);
   const fontFamily = EDITOR_FONTS[post.overlay_font] || EDITOR_FONTS.elegant;
@@ -370,6 +372,30 @@ function DiaryEntryVisual({ post = {}, aspectRatio = "4/3", radius = 0, maxHeigh
           }}
         >
           {overlayText}
+        </div>
+      )}
+      {atmosphericStamp && (
+        <div
+          style={{
+            position: "absolute",
+            right: 12,
+            bottom: 12,
+            padding: "6px 10px",
+            borderRadius: 10,
+            background: "rgba(0,0,0,.42)",
+            color: "#FFD1A6",
+            fontSize: 11,
+            lineHeight: 1.2,
+            letterSpacing: ".9px",
+            fontFamily: "'Courier New',monospace",
+            textTransform: "uppercase",
+            textShadow: "0 1px 4px rgba(0,0,0,.3)",
+            boxShadow: "0 8px 20px rgba(0,0,0,.16)",
+            mixBlendMode: "screen",
+            pointerEvents: "none",
+          }}
+        >
+          {atmosphericStamp}
         </div>
       )}
     </div>
@@ -558,6 +584,43 @@ const HIDDEN_GEMS = [
     lng: 139.1069,
   },
 ];
+
+const WEATHER_LABELS = {
+  0: "Clear",
+  1: "Mostly Clear",
+  2: "Partly Cloudy",
+  3: "Overcast",
+  45: "Fog",
+  48: "Fog",
+  51: "Light Drizzle",
+  53: "Drizzle",
+  55: "Heavy Drizzle",
+  61: "Light Rain",
+  63: "Rain",
+  65: "Heavy Rain",
+  71: "Light Snow",
+  73: "Snow",
+  75: "Heavy Snow",
+  80: "Rain Showers",
+  81: "Showers",
+  82: "Heavy Showers",
+  95: "Thunderstorm",
+};
+
+async function buildAtmosphericStamp({ lat, lng, locationLabel }) {
+  const now = new Date();
+  const timeLabel = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  try {
+    const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true`);
+    const json = await response.json();
+    const weather = json?.current_weather;
+    if (weather) {
+      const weatherLabel = WEATHER_LABELS[weather.weathercode] || "Open Sky";
+      return `${timeLabel} // ${weatherLabel} // ${Math.round(weather.temperature)}°C`;
+    }
+  } catch {}
+  return `${timeLabel} // ${locationLabel || "Quiet Air"} // Diary`;
+}
 
 function DiaryTravelMap({ posts = [], title = "Travel Map", onPostClick }) {
   const mapped = posts.filter(p => p.location || p.location_name || p.lat || p.lng).slice(0, 18);
@@ -1116,12 +1179,48 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
   const [comment, setComment] = useState("");
   const [comments, setComments] = useState([]);
   const [loadingComment, setLoadingComment] = useState(false);
+  const [holdProgress, setHoldProgress] = useState(0);
+  const holdTimerRef = useRef(null);
+  const holdStartRef = useRef(0);
+  const appreciated = Boolean(post.liked);
 
-  const handleLike = async (e) => {
-    if (!currentUser) { showToast("Sign in to like posts", "error"); return; }
-    const rect = e.currentTarget.getBoundingClientRect();
-    if (!post.liked) setBurst({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
-    onLike(post.id, post.liked);
+  const clearHold = () => {
+    if (holdTimerRef.current) {
+      clearInterval(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    setHoldProgress(0);
+  };
+
+  const handleAppreciate = async (target) => {
+    if (!currentUser) { showToast("Sign in to appreciate posts", "error"); return; }
+    if (appreciated) return;
+    const rect = target.getBoundingClientRect();
+    setBurst({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+    onLike(post.id, false);
+    showToast("Appreciation sent privately");
+  };
+
+  const startHold = (event) => {
+    if (appreciated) return;
+    const target = event.currentTarget;
+    holdStartRef.current = Date.now();
+    clearHold();
+    holdTimerRef.current = setInterval(() => {
+      const elapsed = Date.now() - holdStartRef.current;
+      const next = clamp(elapsed / 2000, 0, 1);
+      setHoldProgress(next);
+      if (next >= 1) {
+        clearInterval(holdTimerRef.current);
+        holdTimerRef.current = null;
+        handleAppreciate(target);
+      }
+    }, 40);
+  };
+
+  const stopHold = () => {
+    if (appreciated) return;
+    clearHold();
   };
 
   const handleShare = async () => {
@@ -1260,7 +1359,7 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
       </div>
 
       {/* Image */}
-      <div onDoubleClick={handleLike}>
+      <div>
         <DiaryEntryVisual post={post} aspectRatio="4/3" onClick={() => setShowFullDiary(true)} />
       </div>
 
@@ -1268,9 +1367,31 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
       <div style={{ padding: "12px 16px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
           <div style={{ display: "flex", gap: 16 }}>
-            <button onClick={handleLike} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: post.liked ? C.pink : C.tan, fontSize: 13, fontFamily: "'Lato',sans-serif", fontWeight: 700 }}>
-              <span style={{ fontSize: 20, transform: post.liked ? "scale(1.15)" : "scale(1)", transition: "transform 0.18s", display: "block" }}>{post.liked ? "❤️" : "🤍"}</span>
-              <span style={{ fontSize: 22, marginLeft: -26, fontFamily: "'Playfair Display',Georgia,serif", background: C.white, position: "relative", zIndex: 1 }}>D</span>
+            <button
+              onMouseDown={startHold}
+              onMouseUp={stopHold}
+              onMouseLeave={stopHold}
+              onTouchStart={startHold}
+              onTouchEnd={stopHold}
+              style={{
+                position: "relative",
+                width: 38,
+                height: 38,
+                borderRadius: "50%",
+                border: "none",
+                cursor: appreciated ? "default" : "pointer",
+                background: appreciated
+                  ? `conic-gradient(${C.pink} 100%, ${C.beige} 0)`
+                  : `conic-gradient(${C.pink} ${holdProgress * 360}deg, ${C.beige} 0deg)`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 0,
+              }}
+              aria-label={appreciated ? "Appreciated" : "Hold to appreciate"}
+            >
+              <span style={{ position: "absolute", inset: 3, borderRadius: "50%", background: C.white }} />
+              <span style={{ position: "relative", zIndex: 1, fontSize: 18, color: appreciated ? C.pink : C.dark, fontFamily: "'Playfair Display',Georgia,serif", fontWeight: 900 }}>D</span>
             </button>
             <button onClick={toggleComments} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: C.tan, fontSize: 13, fontFamily: "'Lato',sans-serif", fontWeight: 700 }}>
               <span style={{ fontSize: 18 }}>💬</span>
@@ -1281,6 +1402,9 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
             {post.bookmarked ? "🔖" : "🏷️"}
           </button>
         </div>
+        <p style={{ margin: "0 0 8px", fontSize: 11, color: C.tan, fontFamily: "'Lato',sans-serif" }}>
+          {appreciated ? "Appreciated privately" : "Hold D for 2 seconds to appreciate"}
+        </p>
 
         {post.caption && (
           <p style={{ margin: "0 0 4px", fontFamily: "'Lato',sans-serif", fontSize: 13, color: C.dark, lineHeight: 1.5 }}>
@@ -1332,7 +1456,7 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
             <div style={{ width: 42, height: 4, borderRadius: 999, background: C.tan, margin: "0 auto 12px", opacity: 0.7 }} />
             <h3 style={{ margin: "0 0 8px", fontFamily: "'Playfair Display',Georgia,serif", color: C.dark }}>Diary options</h3>
             {menuItem("View full Diary", () => { setShowFullDiary(true); setShowActions(false); })}
-            {menuItem(post.liked ? "Not Diared" : "Diared it", (e) => { handleLike(e); setShowActions(false); })}
+            {menuItem(post.liked ? "Already appreciated" : "Hold D to appreciate", () => setShowActions(false))}
             {menuItem("Share", async () => { await handleShare(); setShowActions(false); })}
             {menuItem("Copy link", copyLink)}
             {currentUser?.id === post.user_id && menuItem("Delete post", () => { setShowActions(false); onDeletePost?.(post.id); }, true)}
@@ -1700,7 +1824,16 @@ function CreatePage({ currentUser, showToast, setPage }) {
   const [cameraGear, setCameraGear] = useState("");
   const [lens, setLens] = useState("");
   const [editSoftware, setEditSoftware] = useState("");
+  const [attachQuoteImage, setAttachQuoteImage] = useState(false);
+  const [showCraftDetails, setShowCraftDetails] = useState(false);
+  const [stampEnabled, setStampEnabled] = useState(true);
   const fileRef = useRef();
+
+  useEffect(() => {
+    if (postMode === "image") {
+      setAttachQuoteImage(true);
+    }
+  }, [postMode]);
 
   const pickImage = (e) => {
     const file = e.target.files[0];
@@ -1758,6 +1891,7 @@ function CreatePage({ currentUser, showToast, setPage }) {
         publicUrl = urlData.publicUrl;
       }
       const coords = placeToCoords(location.trim());
+      const atmosphericStamp = stampEnabled ? await buildAtmosphericStamp({ lat: coords.lat, lng: coords.lng, locationLabel: location.trim() }) : null;
 
       // Insert post with Travel Map fields when the Supabase schema supports them.
       const postPayload = {
@@ -1779,9 +1913,10 @@ function CreatePage({ currentUser, showToast, setPage }) {
         camera_gear: cameraGear.trim() || null,
         lens: lens.trim() || null,
         edit_software: editSoftware.trim() || null,
+        atmospheric_stamp: atmosphericStamp,
       };
       let { error: postErr } = await supabase.from("posts").insert(postPayload);
-      if (postErr && /location_name|lat|lng|season|filter_type|journey_title|overlay_|camera_gear|lens|edit_software/i.test(postErr.message || "")) {
+      if (postErr && /location_name|lat|lng|season|filter_type|journey_title|overlay_|camera_gear|lens|edit_software|atmospheric_stamp/i.test(postErr.message || "")) {
         const fallback = { user_id: currentUser.id, image_url: publicUrl, caption: caption.trim(), location: location.trim(), category: postMode === "quote" ? "quote" : category };
         const retry = await supabase.from("posts").insert(fallback);
         postErr = retry.error;
@@ -1793,6 +1928,7 @@ function CreatePage({ currentUser, showToast, setPage }) {
       setCaption(""); setLocation(""); setArcTitle(""); setImageFile(null); setPreview(null); setSeason("spring"); setFilterType("warm"); setRotation(0);
       setOverlay({ text: "", font: "elegant", x: 0.5, y: 0.78 });
       setCameraGear(""); setLens(""); setEditSoftware("");
+      setAttachQuoteImage(false); setShowCraftDetails(false); setStampEnabled(true);
       setPage(postMode === "quote" ? "quotes" : "home");
     } catch (err) {
       showToast(err.message || "Failed to post", "error");
@@ -1812,50 +1948,77 @@ function CreatePage({ currentUser, showToast, setPage }) {
       </div>
 
       {/* Upload area */}
-      <CanvasOverlayEditor
-        preview={preview}
-        filterType={filterType}
-        rotation={rotation}
-        overlay={overlay}
-        setOverlay={setOverlay}
-        postMode={postMode}
-        caption={caption}
-      />
-      <button onClick={() => fileRef.current.click()} style={{ width: "100%", marginTop: -6, marginBottom: 16, background: C.white, border: `1.5px solid ${C.tan}`, borderRadius: 14, padding: "12px 14px", cursor: "pointer", color: C.dark, fontWeight: 800, fontFamily: "'Lato',sans-serif" }}>
-        {preview ? "Change image" : postMode === "quote" ? "Add optional image" : "Upload image"}
-      </button>
+      <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
+        {postMode === "quote" && (
+          <button onClick={() => {
+            setAttachQuoteImage(v => {
+              const next = !v;
+              if (!next) {
+                setImageFile(null);
+                setPreview(null);
+                setRotation(0);
+                setOverlay({ text: "", font: "elegant", x: 0.5, y: 0.78 });
+              }
+              return next;
+            });
+          }} style={{ width: "100%", background: attachQuoteImage ? C.dark : C.white, color: attachQuoteImage ? C.white : C.dark, border: `1.5px solid ${attachQuoteImage ? C.dark : C.tan}`, borderRadius: 14, padding: "12px 14px", cursor: "pointer", fontWeight: 800, fontFamily: "'Lato',sans-serif" }}>
+            {attachQuoteImage ? "Image attached to quote" : "Add image to quote"}
+          </button>
+        )}
+        <button onClick={() => setStampEnabled(v => !v)} style={{ width: "100%", background: stampEnabled ? C.beige : C.white, color: C.dark, border: `1.5px solid ${C.tan}`, borderRadius: 14, padding: "12px 14px", cursor: "pointer", fontWeight: 800, fontFamily: "'Lato',sans-serif" }}>
+          {stampEnabled ? "Atmospheric stamp on" : "Atmospheric stamp off"}
+        </button>
+      </div>
+      {(postMode === "image" || attachQuoteImage) && (
+        <>
+          <CanvasOverlayEditor
+            preview={preview}
+            filterType={filterType}
+            rotation={rotation}
+            overlay={overlay}
+            setOverlay={setOverlay}
+            postMode={postMode}
+            caption={caption}
+          />
+          <button onClick={() => fileRef.current.click()} style={{ width: "100%", marginTop: -6, marginBottom: 16, background: C.white, border: `1.5px solid ${C.tan}`, borderRadius: 14, padding: "12px 14px", cursor: "pointer", color: C.dark, fontWeight: 800, fontFamily: "'Lato',sans-serif" }}>
+            {preview ? "Change image" : postMode === "quote" ? "Add optional image" : "Upload image"}
+          </button>
+        </>
+      )}
       <input ref={fileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={pickImage} />
-      {preview && (
+      {preview && (postMode === "image" || attachQuoteImage) && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, margin: "-6px 0 18px" }}>
           <button onClick={() => setRotation(r => (r + 270) % 360)} style={{ background: C.white, border: `1.5px solid ${C.tan}`, borderRadius: 14, padding: "11px 10px", fontFamily: "'Lato',sans-serif", fontSize: 13, fontWeight: 800, color: C.dark, cursor: "pointer" }}>↺ Rotate left</button>
           <button onClick={() => setRotation(r => (r + 90) % 360)} style={{ background: C.white, border: `1.5px solid ${C.tan}`, borderRadius: 14, padding: "11px 10px", fontFamily: "'Lato',sans-serif", fontSize: 13, fontWeight: 800, color: C.dark, cursor: "pointer" }}>Rotate right ↻</button>
         </div>
       )}
 
-      <div style={{ background: C.white, borderRadius: 18, padding: 14, boxShadow: `0 8px 24px ${C.shadow}`, marginBottom: 16 }}>
-        <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 11, color: C.brown, margin: "0 0 8px", fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase" }}>Canvas editor</p>
-        <Input placeholder="Overlay text (optional)" value={overlay.text} onChange={e => setOverlay(prev => ({ ...prev, text: e.target.value }))} style={{ marginBottom: 10 }} />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-          {Object.entries(EDITOR_FONTS).map(([key, fontFamily]) => (
-            <button
-              key={key}
-              onClick={() => setOverlay(prev => ({ ...prev, font: key }))}
-              style={{
-                background: overlay.font === key ? C.dark : C.white,
-                color: overlay.font === key ? C.white : C.dark,
-                border: `1.5px solid ${overlay.font === key ? C.dark : C.tan}`,
-                borderRadius: 14,
-                padding: "10px 8px",
-                cursor: "pointer",
-                fontWeight: 700,
-                fontFamily,
-              }}
-            >
-              {key === "clean" ? "Clean" : key === "typewriter" ? "Typewriter" : "Elegant"}
-            </button>
-          ))}
+      {(postMode === "image" || attachQuoteImage) && (
+        <div style={{ background: C.white, borderRadius: 18, padding: 14, boxShadow: `0 8px 24px ${C.shadow}`, marginBottom: 16 }}>
+          <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 11, color: C.brown, margin: "0 0 8px", fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase" }}>Blank canvas editor</p>
+          <Input placeholder="Overlay text (optional)" value={overlay.text} onChange={e => setOverlay(prev => ({ ...prev, text: e.target.value }))} style={{ marginBottom: 10 }} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+            {Object.entries(EDITOR_FONTS).map(([key, fontFamily]) => (
+              <button
+                key={key}
+                onClick={() => setOverlay(prev => ({ ...prev, font: key }))}
+                style={{
+                  background: overlay.font === key ? C.dark : C.white,
+                  color: overlay.font === key ? C.white : C.dark,
+                  border: `1.5px solid ${overlay.font === key ? C.dark : C.tan}`,
+                  borderRadius: 14,
+                  padding: "10px 8px",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                  fontFamily,
+                }}
+              >
+                {key === "clean" ? "Clean" : key === "typewriter" ? "Typewriter" : "Elegant"}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <Input placeholder={postMode === "quote" ? "Write your diary quote..." : "Write your moment... what does this place feel like?"} value={caption} onChange={e => setCaption(e.target.value)} multiline style={{ marginBottom: 13 }} />
       <Input placeholder="📍 Add location" value={location} onChange={e => setLocation(e.target.value)} style={{ marginBottom: 13 }} />
@@ -1863,12 +2026,17 @@ function CreatePage({ currentUser, showToast, setPage }) {
 
       <p style={{ margin: "-5px 0 13px", color: C.brown, fontSize: 11, fontFamily: "'Lato',sans-serif" }}>Location is required for every Diary moment and powers your Travel Map.</p>
 
-      <div style={{ background: C.white, borderRadius: 18, padding: 14, boxShadow: `0 8px 24px ${C.shadow}`, marginBottom: 18 }}>
-        <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 11, color: C.brown, margin: "0 0 8px", fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase" }}>Camera placard</p>
-        <Input placeholder="Camera gear (optional)" value={cameraGear} onChange={e => setCameraGear(e.target.value)} style={{ marginBottom: 10 }} />
-        <Input placeholder="Lens (optional)" value={lens} onChange={e => setLens(e.target.value)} style={{ marginBottom: 10 }} />
-        <Input placeholder="Film simulation / edit software (optional)" value={editSoftware} onChange={e => setEditSoftware(e.target.value)} />
-      </div>
+      <button onClick={() => setShowCraftDetails(v => !v)} style={{ width: "100%", background: C.white, color: C.dark, border: `1.5px solid ${C.tan}`, borderRadius: 14, padding: "12px 14px", cursor: "pointer", fontWeight: 800, fontFamily: "'Lato',sans-serif", marginBottom: 12 }}>
+        {showCraftDetails ? "Hide craft details" : "Add camera details"}
+      </button>
+      {showCraftDetails && (
+        <div style={{ background: C.white, borderRadius: 18, padding: 14, boxShadow: `0 8px 24px ${C.shadow}`, marginBottom: 18 }}>
+          <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 11, color: C.brown, margin: "0 0 8px", fontWeight: 700, letterSpacing: "0.8px", textTransform: "uppercase" }}>Camera placard</p>
+          <Input placeholder="Camera gear (optional)" value={cameraGear} onChange={e => setCameraGear(e.target.value)} style={{ marginBottom: 10 }} />
+          <Input placeholder="Lens (optional)" value={lens} onChange={e => setLens(e.target.value)} style={{ marginBottom: 10 }} />
+          <Input placeholder="Film simulation / edit software (optional)" value={editSoftware} onChange={e => setEditSoftware(e.target.value)} />
+        </div>
+      )}
 
       {/* Category */}
       <div style={{ marginBottom: 20 }}>
@@ -3975,7 +4143,8 @@ export default function DiaryApp() {
     if (!file) return;
     try {
       const palette = await analyzeImagePalette(file);
-      setTheme({ mode: "custom", backgroundImage: palette.image, tone: palette.tone });
+      setTheme(prev => ({ ...prev, mode: "custom", backgroundImage: palette.image, tone: palette.tone }));
+      e.target.value = "";
       showToast("Theme updated");
     } catch {
       showToast("Could not read that background image", "error");
@@ -4038,7 +4207,7 @@ export default function DiaryApp() {
   );
 
   return (
-    <div className="diary-paper" style={{ width: "100%", maxWidth: 480, margin: "0 auto", background: C.cream, minHeight: "100vh", position: "relative", overflowX: "hidden", boxShadow: `0 0 0 1px ${C.beige}`, backgroundImage: theme.backgroundImage ? `linear-gradient(rgba(0,0,0,${theme.mode === "dark" || theme.tone === "dark" ? 0.35 : 0.12}),rgba(0,0,0,${theme.mode === "dark" || theme.tone === "dark" ? 0.45 : 0.08})), url(${theme.backgroundImage})` : undefined, backgroundSize: "cover", backgroundPosition: "center top", backgroundRepeat: "no-repeat", backgroundAttachment: "fixed" }}>
+    <div className="diary-paper" style={{ width: "100%", maxWidth: 480, margin: "0 auto", background: C.cream, minHeight: "100vh", position: "relative", overflowX: "hidden", boxShadow: `0 0 0 1px ${C.beige}`, backgroundImage: theme.mode === "custom" && theme.backgroundImage ? `linear-gradient(rgba(0,0,0,${theme.tone === "dark" ? 0.35 : 0.12}),rgba(0,0,0,${theme.tone === "dark" ? 0.45 : 0.08})), url(${theme.backgroundImage})` : undefined, backgroundSize: "cover", backgroundPosition: "center top", backgroundRepeat: "no-repeat", backgroundAttachment: "fixed" }}>
       <FontLoader />
       <LovableVibeStyle />
 

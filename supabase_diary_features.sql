@@ -19,6 +19,7 @@ alter table public.posts
   add column if not exists camera_gear text,
   add column if not exists lens text,
   add column if not exists edit_software text,
+  add column if not exists atmospheric_stamp text,
   add column if not exists report_count integer not null default 0,
   add column if not exists is_hidden boolean not null default false;
 
