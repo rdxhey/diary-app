@@ -3295,7 +3295,7 @@ function AdvertiseOnDiaryPage({ currentUser, setPage, showToast }) {
 }
 
 function DiaryProPage({ setPage }) {
-  const perks = ["Custom themes", "Advanced arc layouts", "Travel map upgrades", "Priority support"];
+  const perks = ["Advanced arc layouts", "Travel map upgrades", "Priority support"];
   return (
     <div style={{ padding: "56px 16px 100px", background: C.cream, minHeight: "100vh" }}>
       <PageHeader title="Diary Pro" subtitle="A polished premium tier" onBack={() => setPage("settings")} />
