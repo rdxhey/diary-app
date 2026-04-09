@@ -2955,6 +2955,7 @@ function FollowListSheet({ open, title, users, onClose, onOpenProfile }) {
 
 const STORY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const UNSENT_MESSAGE_TOKEN = "__diary_unsent__";
+const isVisibleMessage = (message) => message?.content !== UNSENT_MESSAGE_TOKEN;
 
 const getRecentMemoryPosts = (posts = [], max = 12) => {
   const now = Date.now();
@@ -4165,22 +4166,24 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
 function AdminReportsPage({ setPage, showToast }) {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [accessError, setAccessError] = useState("");
 
   const fetchReports = useCallback(async () => {
     setLoading(true);
+    setAccessError("");
     const { data, error } = await supabase.from("reports")
       .select("*")
       .eq("status", "pending")
       .order("created_at", { ascending: false })
       .limit(50);
     if (error) {
-      showToast("Diary Authority queue needs reports table/admin access", "error");
       setReports([]);
+      setAccessError("Diary Authority is unavailable for this account until reports access is enabled.");
     } else {
       setReports(data || []);
     }
     setLoading(false);
-  }, [showToast]);
+  }, []);
 
   useEffect(() => { fetchReports(); }, [fetchReports]);
 
@@ -4211,6 +4214,12 @@ function AdminReportsPage({ setPage, showToast }) {
       </div>
       {loading ? (
         <p style={{ textAlign: "center", color: C.brown, fontFamily: "'Playfair Display',Georgia,serif", fontStyle: "italic" }}>Loading reports...</p>
+      ) : accessError ? (
+        <div style={{ background: C.white, borderRadius: 20, padding: "26px 18px", boxShadow: `0 10px 28px ${C.shadow}`, textAlign: "center" }}>
+          <p style={{ margin: "0 0 8px", fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, fontSize: 22 }}>Diary Authority is locked</p>
+          <p style={{ margin: "0 0 16px", color: C.brown, lineHeight: 1.55, fontSize: 13 }}>{accessError}</p>
+          <Btn variant="secondary" onClick={() => setPage("settings")} style={{ borderRadius: 999 }}>Back to settings</Btn>
+        </div>
       ) : reports.length === 0 ? (
         <div style={{ textAlign: "center", padding: "44px 0" }}>
           <p style={{ fontSize: 34, margin: 0 }}>✦</p>
@@ -5026,6 +5035,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
   const [reportReason, setReportReason] = useState("");
   const [chatWallpaper, setChatWallpaper] = useState(() => localStorage.getItem("diary-chat-wallpaper") || "");
   const wallpaperRef = useRef(null);
+  const visibleMessages = messages.filter(isVisibleMessage);
 
   const loadConversations = useCallback(async () => {
     if (!currentUser) return;
@@ -5109,6 +5119,14 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
   useEffect(() => {
     if (initialUser && active?.id !== initialUser.id) openConvo(initialUser);
   }, [initialUser]);
+
+  useEffect(() => {
+    if (!currentUser || !active?.id) return;
+    const timer = setInterval(() => {
+      openConvo(active);
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [currentUser, active?.id]);
 
   const sendMsg = async () => {
     if (!newMsg.trim() || !active) return;
@@ -5218,14 +5236,14 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
                 : `linear-gradient(180deg, ${C.cream}, ${C.white})`,
             }}
           >
-            {messages.length === 0 && (
+            {visibleMessages.length === 0 && (
               <div style={{ textAlign: "center", padding: "50px 20px", color: C.brown }}>
                 <div style={{ display: "flex", justifyContent: "center" }}><Avatar src={active.avatar_url} size={72} active /></div>
                 <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, marginBottom: 4 }}>Start your Diary chat</h3>
                 <p style={{ fontSize: 13 }}>Send a private message to {displayHandle(active.username, "this user")}.</p>
               </div>
             )}
-            {messages.map((m, idx) => (
+            {visibleMessages.map((m, idx) => (
               <div key={m.id} style={{ display: "flex", justifyContent: m.sender_id === currentUser.id ? "flex-end" : "flex-start", marginBottom: 9 }}>
                 <button
                   onClick={() => setSelectedMessage(m)}
@@ -5246,7 +5264,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
                   <div>{m.content}</div>
                   <div style={{ marginTop: 6, fontSize: 10, opacity: 0.78 }}>
                     {new Date(m.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-                    {m.sender_id === currentUser.id ? ` · ${idx === messages.length - 1 ? "Seen" : "Sent"}` : ""}
+                    {m.sender_id === currentUser.id ? ` · ${idx === visibleMessages.length - 1 ? "Seen" : "Sent"}` : ""}
                   </div>
                 </button>
               </div>
