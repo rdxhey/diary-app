@@ -29,6 +29,17 @@ const FILTERS = {
   none: "none",
 };
 
+const COUNTRY_OPTIONS = [
+  ["🇮🇳", "India"], ["🇯🇵", "Japan"], ["🇫🇷", "France"], ["🇮🇹", "Italy"], ["🇪🇸", "Spain"],
+  ["🇩🇪", "Germany"], ["🇬🇧", "United Kingdom"], ["🇺🇸", "United States"], ["🇨🇦", "Canada"], ["🇦🇺", "Australia"],
+  ["🇳🇿", "New Zealand"], ["🇰🇷", "South Korea"], ["🇹🇭", "Thailand"], ["🇻🇳", "Vietnam"], ["🇸🇬", "Singapore"],
+  ["🇮🇩", "Indonesia"], ["🇲🇾", "Malaysia"], ["🇵🇭", "Philippines"], ["🇳🇵", "Nepal"], ["🇱🇰", "Sri Lanka"],
+  ["🇦🇪", "United Arab Emirates"], ["🇹🇷", "Turkey"], ["🇬🇷", "Greece"], ["🇳🇱", "Netherlands"], ["🇨🇭", "Switzerland"],
+  ["🇸🇪", "Sweden"], ["🇳🇴", "Norway"], ["🇩🇰", "Denmark"], ["🇵🇹", "Portugal"], ["🇦🇹", "Austria"],
+  ["🇨🇿", "Czech Republic"], ["🇭🇺", "Hungary"], ["🇵🇱", "Poland"], ["🇲🇽", "Mexico"], ["🇧🇷", "Brazil"],
+  ["🇦🇷", "Argentina"], ["🇨🇱", "Chile"], ["🇿🇦", "South Africa"], ["🇪🇬", "Egypt"], ["🇲🇦", "Morocco"],
+];
+
 class AppErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -262,9 +273,19 @@ function Btn({ children, onClick, variant = "primary", style = {}, disabled = fa
   return <button onClick={onClick} disabled={disabled || loading} style={{ ...base, ...v[variant], ...style }}>{loading ? "..." : children}</button>;
 }
 
+const resolveInputIcon = (icon) => {
+  if (!icon) return "";
+  const key = String(icon).trim().toLowerCase();
+  if (key === "search") return "⌕";
+  if (key === "email") return "✉";
+  if (key === "password") return "🔒";
+  return icon;
+};
+
 function Input({ placeholder, type = "text", value, onChange, icon, style = {}, multiline = false }) {
+  const iconLabel = resolveInputIcon(icon);
   const shared = {
-    width: "100%", padding: icon ? "13px 14px 13px 40px" : "13px 14px",
+    width: "100%", padding: iconLabel ? "13px 14px 13px 40px" : "13px 14px",
     border: `1.5px solid ${C.tan}`, borderRadius: 12,
     background: C.white, fontFamily: "'Lato',sans-serif",
     fontSize: 14, color: C.dark, outline: "none",
@@ -272,13 +293,77 @@ function Input({ placeholder, type = "text", value, onChange, icon, style = {}, 
   };
   return (
     <div style={{ position: "relative", width: "100%" }}>
-      {icon && <span style={{ position: "absolute", left: 14, top: multiline ? 14 : "50%", transform: multiline ? "none" : "translateY(-50%)", color: C.tan, fontSize: 15 }}>{icon}</span>}
+      {iconLabel && <span style={{ position: "absolute", left: 14, top: multiline ? 14 : "50%", transform: multiline ? "none" : "translateY(-50%)", color: C.tan, fontSize: 15 }}>{iconLabel}</span>}
       {multiline
         ? <textarea placeholder={placeholder} value={value} onChange={onChange} style={{ ...shared, resize: "none", height: 85 }}
             onFocus={e => e.target.style.borderColor = C.pink} onBlur={e => e.target.style.borderColor = C.tan} />
         : <input type={type} placeholder={placeholder} value={value} onChange={onChange} style={shared}
             onFocus={e => e.target.style.borderColor = C.pink} onBlur={e => e.target.style.borderColor = C.tan} />
       }
+    </div>
+  );
+}
+
+function CountryPicker({ value, onChange }) {
+  const [query, setQuery] = useState(value || "");
+  const filtered = COUNTRY_OPTIONS.filter(([, country]) => country.toLowerCase().includes(query.trim().toLowerCase()));
+  const selectedCountry = COUNTRY_OPTIONS.find(([, country]) => country === value);
+
+  useEffect(() => {
+    setQuery(value || "");
+  }, [value]);
+
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      <Input placeholder="Search country..." value={query} onChange={(e) => setQuery(e.target.value)} icon="Search" />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "0 2px" }}>
+        <span style={{ color: C.brown, fontSize: 12, fontWeight: 700 }}>Choose your country</span>
+        {selectedCountry && (
+          <span style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            background: C.cream,
+            color: C.dark,
+            border: `1px solid ${C.beige}`,
+            borderRadius: 999,
+            padding: "6px 10px",
+            fontSize: 12,
+            fontWeight: 700,
+          }}>
+            <span>{selectedCountry[0]}</span>
+            <span>{selectedCountry[1]}</span>
+          </span>
+        )}
+      </div>
+      <div style={{ maxHeight: 180, overflowY: "auto", border: `1px solid ${C.beige}`, borderRadius: 16, background: C.white, padding: 6 }}>
+        {filtered.map(([flag, country]) => (
+          <button
+            key={country}
+            onClick={() => { onChange(country); setQuery(country); }}
+            style={{
+              width: "100%",
+              border: "none",
+              background: value === country ? C.beige : "transparent",
+              borderRadius: 12,
+              padding: "11px 12px",
+              textAlign: "left",
+              cursor: "pointer",
+              color: C.dark,
+              fontWeight: value === country ? 800 : 600,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <span style={{ fontSize: 18 }}>{flag}</span>
+            <span>{country}</span>
+          </button>
+        ))}
+        {filtered.length === 0 && (
+          <div style={{ padding: "12px 10px", color: C.brown, fontSize: 12 }}>No country matched that search.</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1190,7 +1275,7 @@ function SignupPage({ onBack, onSuccess, showToast }) {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
               <Input placeholder="@username" value={form.username} onChange={e => up("username", e.target.value.replace(/^@+/, ""))} icon="@" />
-              <Input placeholder="Country" value={form.country} onChange={e => up("country", e.target.value)} icon="🌍" />
+              <CountryPicker value={form.country} onChange={(country) => up("country", country)} />
               <Input placeholder="Your bio — what do you love to capture?" value={form.bio} onChange={e => up("bio", e.target.value)} multiline icon="✍" />
             </div>
             <div style={{ marginTop: "auto", paddingTop: 28 }}>
@@ -4416,8 +4501,8 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
       <div style={cardStyle}>
         <p style={{ margin: "0 0 8px", color: C.dark, fontWeight: 800 }}>Current detected country</p>
         <p style={{ margin: "0 0 12px", color: C.brown }}>{currentCountry || "Not detected yet"}</p>
-        <Input placeholder="Manual country override" value={countryDraft} onChange={e => setCountryDraft(e.target.value)} />
-        <button onClick={handleSaveLocation} style={{ marginTop: 10, width: "100%", border: "none", background: C.white, borderRadius: 14, padding: "12px 14px", cursor: "pointer", color: C.dark, fontWeight: 700, borderColor: C.beige, borderStyle: "solid", borderWidth: 1 }}>Save location</button>
+        <CountryPicker value={countryDraft} onChange={setCountryDraft} />
+        <button onClick={handleSaveLocation} style={{ marginTop: 10, width: "100%", border: "none", background: C.beige, borderRadius: 14, padding: "12px 14px", cursor: "pointer", color: C.dark, fontWeight: 800 }}>Save location</button>
       </div>
 
       {sectionTitle("Data & Storage")}
