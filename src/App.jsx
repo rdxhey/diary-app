@@ -2954,6 +2954,7 @@ function FollowListSheet({ open, title, users, onClose, onOpenProfile }) {
 }
 
 const STORY_WINDOW_MS = 24 * 60 * 60 * 1000;
+const UNSENT_MESSAGE_TOKEN = "__diary_unsent__";
 
 const getRecentMemoryPosts = (posts = [], max = 12) => {
   const now = Date.now();
@@ -5001,7 +5002,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
       .order("created_at", { ascending: false });
     const seen = new Set();
     const convos = [];
-    (data || []).forEach(m => {
+    (data || []).filter((m) => m.content !== UNSENT_MESSAGE_TOKEN).forEach(m => {
       const other = m.sender_id === currentUser.id ? m.receiver : m.sender;
       const otherId = m.sender_id === currentUser.id ? m.receiver_id : m.sender_id;
       if (other && !seen.has(otherId)) {
@@ -5028,6 +5029,17 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
         if (!deletedId) return;
         setMessages(prev => prev.filter((message) => message.id !== deletedId));
         if (selectedMessage?.id === deletedId) setSelectedMessage(null);
+        loadConversations();
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, payload => {
+        const updated = payload.new;
+        if (!updated?.id) return;
+        if (updated.content === UNSENT_MESSAGE_TOKEN) {
+          setMessages(prev => prev.filter((message) => message.id !== updated.id));
+          if (selectedMessage?.id === updated.id) setSelectedMessage(null);
+        } else {
+          setMessages(prev => prev.map((message) => message.id === updated.id ? { ...message, ...updated } : message));
+        }
         loadConversations();
       })
       .subscribe();
@@ -5058,7 +5070,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
       .select("*")
       .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${user.id}),and(sender_id.eq.${user.id},receiver_id.eq.${currentUser.id})`)
       .order("created_at", { ascending: true });
-    setMessages(data || []);
+    setMessages((data || []).filter((message) => message.content !== UNSENT_MESSAGE_TOKEN));
   };
 
   useEffect(() => {
@@ -5080,17 +5092,24 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
 
   const unsendMessage = async () => {
     if (!selectedMessage || selectedMessage.sender_id !== currentUser?.id) return;
-    const { error } = await supabase.from("messages").delete().eq("id", selectedMessage.id).eq("sender_id", currentUser.id);
-    if (error) {
-      showToast?.(error.message || "Could not unsend message", "error");
+    let succeeded = false;
+    const { error: updateError } = await supabase.from("messages").update({ content: UNSENT_MESSAGE_TOKEN }).eq("id", selectedMessage.id).eq("sender_id", currentUser.id);
+    if (!updateError) {
+      succeeded = true;
+      await supabase.from("messages").delete().eq("id", selectedMessage.id).eq("sender_id", currentUser.id);
     } else {
+      const { error: deleteError } = await supabase.from("messages").delete().eq("id", selectedMessage.id).eq("sender_id", currentUser.id);
+      if (!deleteError) succeeded = true;
+      else showToast?.(deleteError.message || updateError.message || "Could not unsend message", "error");
+    }
+    if (succeeded) {
       setMessages(prev => prev.filter(m => m.id !== selectedMessage.id));
       if (active) {
         const { data } = await supabase.from("messages")
           .select("*")
           .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${active.id}),and(sender_id.eq.${active.id},receiver_id.eq.${currentUser.id})`)
           .order("created_at", { ascending: true });
-        setMessages(data || []);
+        setMessages((data || []).filter((message) => message.content !== UNSENT_MESSAGE_TOKEN));
       }
       loadConversations();
       showToast?.("Message unsent for everyone");
