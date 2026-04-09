@@ -2956,6 +2956,19 @@ function FollowListSheet({ open, title, users, onClose, onOpenProfile }) {
 const STORY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const UNSENT_MESSAGE_TOKEN = "__diary_unsent__";
 const isVisibleMessage = (message) => message?.content !== UNSENT_MESSAGE_TOKEN;
+const getHiddenMessageIdsKey = (userId) => `diary-hidden-messages-${userId || "guest"}`;
+const getHiddenMessageIds = (userId) => {
+  try {
+    return JSON.parse(localStorage.getItem(getHiddenMessageIdsKey(userId)) || "[]");
+  } catch {
+    return [];
+  }
+};
+const setHiddenMessageIds = (userId, ids) => {
+  try {
+    localStorage.setItem(getHiddenMessageIdsKey(userId), JSON.stringify([...new Set(ids.filter(Boolean))]));
+  } catch {}
+};
 
 const getRecentMemoryPosts = (posts = [], max = 12) => {
   const now = Date.now();
@@ -5034,8 +5047,10 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [reportReason, setReportReason] = useState("");
   const [chatWallpaper, setChatWallpaper] = useState(() => localStorage.getItem("diary-chat-wallpaper") || "");
+  const [activeChannel, setActiveChannel] = useState(null);
   const wallpaperRef = useRef(null);
-  const visibleMessages = messages.filter(isVisibleMessage);
+  const hiddenMessageIds = getHiddenMessageIds(currentUser?.id);
+  const visibleMessages = messages.filter((message) => isVisibleMessage(message) && !hiddenMessageIds.includes(message.id));
 
   const loadConversations = useCallback(async () => {
     if (!currentUser) return;
@@ -5045,7 +5060,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
       .order("created_at", { ascending: false });
     const seen = new Set();
     const convos = [];
-    (data || []).filter((m) => m.content !== UNSENT_MESSAGE_TOKEN).forEach(m => {
+    (data || []).filter((m) => isVisibleMessage(m) && !hiddenMessageIds.includes(m.id)).forEach(m => {
       const other = m.sender_id === currentUser.id ? m.receiver : m.sender;
       const otherId = m.sender_id === currentUser.id ? m.receiver_id : m.sender_id;
       if (other && !seen.has(otherId)) {
@@ -5054,40 +5069,29 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
       }
     });
     setConversations(convos);
-  }, [currentUser]);
+  }, [currentUser, hiddenMessageIds]);
+
+  const closeConvo = useCallback(() => {
+    if (activeChannel) {
+      supabase.removeChannel(activeChannel);
+      setActiveChannel(null);
+    }
+    setActive(null);
+    setMessages([]);
+    setSelectedMessage(null);
+  }, [activeChannel]);
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
   useEffect(() => {
     if (!currentUser) return;
-    const channel = supabase.channel(`diary-dm-${currentUser.id}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, payload => {
-        const m = payload.new;
-        if (m.sender_id === currentUser.id || m.receiver_id !== currentUser.id) return;
-        if (active && (m.sender_id === active.id || m.receiver_id === active.id)) setMessages(prev => [...prev, m]);
-        loadConversations();
-      })
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "messages" }, payload => {
-        const deletedId = payload.old?.id;
-        if (!deletedId) return;
-        setMessages(prev => prev.filter((message) => message.id !== deletedId));
-        if (selectedMessage?.id === deletedId) setSelectedMessage(null);
-        loadConversations();
-      })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, payload => {
-        const updated = payload.new;
-        if (!updated?.id) return;
-        if (updated.content === UNSENT_MESSAGE_TOKEN) {
-          setMessages(prev => prev.filter((message) => message.id !== updated.id));
-          if (selectedMessage?.id === updated.id) setSelectedMessage(null);
-        } else {
-          setMessages(prev => prev.map((message) => message.id === updated.id ? { ...message, ...updated } : message));
-        }
+    const inboxChannel = supabase.channel(`diary-dm-inbox-${currentUser.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => {
         loadConversations();
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [currentUser, active, loadConversations, selectedMessage]);
+    return () => { supabase.removeChannel(inboxChannel); };
+  }, [currentUser, loadConversations]);
 
   useEffect(() => {
     if (chatWallpaper) localStorage.setItem("diary-chat-wallpaper", chatWallpaper);
@@ -5107,13 +5111,35 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
     return () => clearTimeout(t);
   }, [search, currentUser]);
 
-  const openConvo = async (user) => {
-    setActive(user);
+  const loadThreadMessages = useCallback(async (user) => {
+    if (!currentUser || !user?.id) return;
     const { data } = await supabase.from("messages")
       .select("*")
       .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${user.id}),and(sender_id.eq.${user.id},receiver_id.eq.${currentUser.id})`)
       .order("created_at", { ascending: true });
-    setMessages((data || []).filter((message) => message.content !== UNSENT_MESSAGE_TOKEN));
+    setMessages((data || []).filter((message) => isVisibleMessage(message) && !hiddenMessageIds.includes(message.id)));
+  }, [currentUser, hiddenMessageIds]);
+
+  const openConvo = async (user) => {
+    if (activeChannel) {
+      supabase.removeChannel(activeChannel);
+      setActiveChannel(null);
+    }
+    setActive(user);
+    await loadThreadMessages(user);
+
+    const channel = supabase.channel(`chat-${currentUser.id}-${user.id}-${Date.now()}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (payload) => {
+        const changed = payload.new || payload.old;
+        if (!changed?.id) return;
+        const belongsToThread =
+          (changed.sender_id === currentUser.id && changed.receiver_id === user.id) ||
+          (changed.sender_id === user.id && changed.receiver_id === currentUser.id);
+        if (!belongsToThread) return;
+        loadThreadMessages(user);
+      })
+      .subscribe();
+    setActiveChannel(channel);
   };
 
   useEffect(() => {
@@ -5123,10 +5149,10 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
   useEffect(() => {
     if (!currentUser || !active?.id) return;
     const timer = setInterval(() => {
-      openConvo(active);
-    }, 2500);
+      loadThreadMessages(active);
+    }, 1800);
     return () => clearInterval(timer);
-  }, [currentUser, active?.id]);
+  }, [currentUser, active?.id, loadThreadMessages]);
 
   const sendMsg = async () => {
     if (!newMsg.trim() || !active) return;
@@ -5143,6 +5169,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
 
   const unsendMessage = async () => {
     if (!selectedMessage || selectedMessage.sender_id !== currentUser?.id) return;
+    setHiddenMessageIds(currentUser.id, [...hiddenMessageIds, selectedMessage.id]);
     let succeeded = false;
     const { error: updateError } = await supabase.from("messages").update({ content: UNSENT_MESSAGE_TOKEN }).eq("id", selectedMessage.id).eq("sender_id", currentUser.id);
     if (!updateError) {
@@ -5156,11 +5183,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
     if (succeeded) {
       setMessages(prev => prev.filter(m => m.id !== selectedMessage.id));
       if (active) {
-        const { data } = await supabase.from("messages")
-          .select("*")
-          .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${active.id}),and(sender_id.eq.${active.id},receiver_id.eq.${currentUser.id})`)
-          .order("created_at", { ascending: true });
-        setMessages((data || []).filter((message) => message.content !== UNSENT_MESSAGE_TOKEN));
+        await loadThreadMessages(active);
       }
       loadConversations();
       showToast?.("Message unsent for everyone");
@@ -5215,7 +5238,7 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
               </button>
             }
             subtitle={active.full_name || "Diary message"}
-            onBack={() => setActive(null)}
+            onBack={closeConvo}
             right={
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <button onClick={() => wallpaperRef.current?.click()} style={{ border: "none", background: "none", cursor: "pointer", color: C.brown, fontWeight: 800, fontSize: 12 }}>
