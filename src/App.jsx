@@ -5703,7 +5703,7 @@ export default function DiaryApp() {
             {page === "notifications" && <NotificationsPage currentUser={currentUser} setPage={setPage} onOpenProfile={openProfile} />}
             {page === "dms" && <DMsPage2 currentUser={currentUser} setPage={setPage} showToast={showToast} initialUser={dmInitialUser} onOpenProfile={openProfile} />}
             {page === "postViewer" && <PostViewerPage post={focusedPost} setPage={setPage} showToast={showToast} />}
-            {showNav && <BottomNav2 page={page} setPage={setPage} />}
+            {showNav && <BottomNav page={page === "quotes" ? "discover" : page} setPage={setPage} />}
           </>
         )}
       </div>
