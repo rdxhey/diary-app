@@ -856,6 +856,25 @@ const getGemsForCountry = (country) => {
   return matches.length ? matches : HIDDEN_GEMS.slice(0, 3);
 };
 
+const COUNTRY_TRENDING_LOCATIONS = {
+  india: ["Jaipur", "Goa", "Fort Kochi", "Munnar", "Shimla", "Varanasi"],
+  japan: ["Kyoto", "Takayama", "Hakone", "Nara", "Shirakawa-go", "Nikko"],
+  france: ["Paris", "Lyon", "Annecy", "Bordeaux", "Nice", "Colmar"],
+  "united kingdom": ["London", "Edinburgh", "Bath", "York", "Oxford", "Cornwall"],
+};
+
+const getTrendingLocationsForCountry = (country, posts = []) => {
+  const normalized = (country || "").trim().toLowerCase();
+  if (COUNTRY_TRENDING_LOCATIONS[normalized]) return COUNTRY_TRENDING_LOCATIONS[normalized];
+  const postLocations = [...new Set(
+    (posts || [])
+      .map((post) => (post.location_name || post.location || "").trim())
+      .filter(Boolean)
+  )].slice(0, 6);
+  if (postLocations.length) return postLocations;
+  return getGemsForCountry(country).map((gem) => gem.name.replace(/( Corner| Walk| Cafe| Room)$/i, "")).slice(0, 6);
+};
+
 const WEATHER_LABELS = {
   0: "Clear",
   1: "Mostly Clear",
@@ -893,12 +912,15 @@ async function buildAtmosphericStamp({ lat, lng, locationLabel }) {
   return `${timeLabel} // ${locationLabel || "Quiet Air"} // Diary`;
 }
 
-function DiaryTravelMap({ posts = [], title = "Travel Map", onPostClick, currentCountry = "" }) {
+function DiaryTravelMap({ posts = [], title = "Travel Map", onPostClick, onOpenLocation, currentCountry = "" }) {
   const mapped = posts.filter(p => p.location || p.location_name || p.lat || p.lng).slice(0, 18);
   const mapRef = useRef(null);
   const mapElRef = useRef(null);
   const routeId = useMemo(() => `diary-route-${Math.random().toString(36).slice(2, 9)}`, []);
   const visibleGems = useMemo(() => getGemsForCountry(currentCountry), [currentCountry]);
+  const waypointLabels = useMemo(() => [...new Set(
+    mapped.map((post) => (post.location_name || post.location || "").trim()).filter(Boolean)
+  )].slice(0, 6), [mapped]);
   const mappedCoords = useMemo(() => (
     mapped.map((post, i) => {
       const fallback = placeToCoords(post.location_name || post.location || `post-${i}`);
@@ -1003,6 +1025,42 @@ function DiaryTravelMap({ posts = [], title = "Travel Map", onPostClick, current
           </div>
         )}
       </div>
+      {(waypointLabels.length > 0 || visibleGems.length > 0) && (
+        <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+          {waypointLabels.length > 0 && (
+            <div>
+              <p style={{ margin: "0 0 8px", color: C.dark, fontSize: 12, fontWeight: 800, fontFamily: "'Lato',sans-serif" }}>Route waypoints</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {waypointLabels.map((label) => (
+                  <button
+                    key={label}
+                    onClick={() => onOpenLocation?.(label)}
+                    style={{ border: `1px solid ${C.tan}`, background: C.white, color: C.dark, borderRadius: 999, padding: "7px 12px", cursor: "pointer", fontSize: 12, boxShadow: `0 4px 14px ${C.shadow}` }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {visibleGems.length > 0 && (
+            <div>
+              <p style={{ margin: "0 0 8px", color: C.dark, fontSize: 12, fontWeight: 800, fontFamily: "'Lato',sans-serif" }}>Hidden gems nearby</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {visibleGems.map((gem) => (
+                  <button
+                    key={gem.id}
+                    onClick={() => onOpenLocation?.(gem.name)}
+                    style={{ border: `1px solid ${C.beige}`, background: C.beige, color: C.dark, borderRadius: 999, padding: "7px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
+                  >
+                    {gem.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -2639,7 +2697,6 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
   const [title, setTitle] = useState(forceMode === "quotes" ? "Find inspiration and share your creations" : "Explore Diary");
   const [searching, setSearching] = useState(false);
   const [mode, setMode] = useState(forceMode);
-  const trending = ["Kyoto", "Takayama", "Hakone", "Nara", "Shirakawa-go", "Nikko"];
   const vibeOptions = [
     ["Peaceful", "rural"],
     ["Adventure", "adventure"],
@@ -2667,6 +2724,7 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
     "gem-london": "London",
   };
   const visibleGems = useMemo(() => getGemsForCountry(currentCountry), [currentCountry]);
+  const trending = useMemo(() => getTrendingLocationsForCountry(currentCountry, posts), [currentCountry, posts]);
 
   const loadFeed = useCallback(async () => {
     let query = supabase.from("posts").select("*, profiles(username, avatar_url)").order("created_at", { ascending: false }).limit(30);
@@ -2677,20 +2735,11 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
     setTitle(mode === "quotes" ? "Find inspiration and share your creations" : "Explore Diary");
   }, [mode]);
 
-  useEffect(() => { loadFeed(); }, [loadFeed]);
-  useEffect(() => { setMode(forceMode); }, [forceMode]);
-  useEffect(() => {
-    if (!discoverSeed?.term) return;
-    setSearch(discoverSeed.term);
-    if (discoverSeed.type === "location") loadByLocation(discoverSeed.term);
-    else if (discoverSeed.type === "search") handleSearch();
-    onConsumeDiscoverSeed?.();
-  }, [discoverSeed]);
-
-  const handleSearch = async () => {
-    if (!search.trim()) return;
+  const handleSearch = useCallback(async (termOverride) => {
+    const rawTerm = typeof termOverride === "string" ? termOverride : search;
+    if (!rawTerm.trim()) return;
     setSearching(true);
-    const term = search.trim();
+    const term = rawTerm.trim();
     const [{ data: users }, { data: matchedPosts }] = await Promise.all([
       supabase.from("profiles").select("*").or(`username.ilike.%${term}%,full_name.ilike.%${term}%,location.ilike.%${term}%`).limit(10),
       supabase.from("posts").select("*, profiles(username, avatar_url)").or(`location.ilike.%${term}%,caption.ilike.%${term}%,category.ilike.%${term}%`).limit(30),
@@ -2699,7 +2748,17 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
     setPosts((matchedPosts || []).filter(p => mode === "quotes" ? p.category === "quote" : p.category !== "quote"));
     setTitle(`Results for "${term}"`);
     setSearching(false);
-  };
+  }, [mode, search]);
+
+  useEffect(() => { loadFeed(); }, [loadFeed]);
+  useEffect(() => { setMode(forceMode); }, [forceMode]);
+  useEffect(() => {
+    if (!discoverSeed?.term) return;
+    setSearch(discoverSeed.term);
+    if (discoverSeed.type === "location") loadByLocation(discoverSeed.term);
+    else if (discoverSeed.type === "search") handleSearch(discoverSeed.term);
+    onConsumeDiscoverSeed?.();
+  }, [discoverSeed, handleSearch, onConsumeDiscoverSeed]);
 
   const loadByLocation = async (location) => {
     setResults([]);
@@ -3176,7 +3235,10 @@ function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showT
       const groupedLikes = {};
       (likes || []).forEach((row) => {
         if (!groupedLikes[row.post_id]) groupedLikes[row.post_id] = [];
-        groupedLikes[row.post_id].push(row.profiles?.username || row.profiles?.full_name || "Diary");
+        groupedLikes[row.post_id].push({
+          id: row.user_id,
+          label: row.profiles?.username || row.profiles?.full_name || "Diary",
+        });
       });
       setLikeDetails(groupedLikes);
 
@@ -3185,7 +3247,10 @@ function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showT
         const groupedViews = {};
         (views || []).forEach((row) => {
           if (!groupedViews[row.post_id]) groupedViews[row.post_id] = [];
-          groupedViews[row.post_id].push(row.profiles?.username || row.profiles?.full_name || "Diary");
+          groupedViews[row.post_id].push({
+            id: row.viewer_id,
+            label: row.profiles?.username || row.profiles?.full_name || "Diary",
+          });
         });
         setViewersByStory(groupedViews);
       } catch {
@@ -3193,7 +3258,9 @@ function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showT
         ids.forEach((id) => {
           try {
             const localViewers = JSON.parse(localStorage.getItem(`diary-story-viewers:${id}`) || "[]");
-            localGrouped[id] = Array.isArray(localViewers) ? localViewers : [];
+            localGrouped[id] = Array.isArray(localViewers)
+              ? localViewers.map((viewer, index) => typeof viewer === "string" ? { id: `local-${index}`, label: viewer } : viewer)
+              : [];
           } catch {
             localGrouped[id] = [];
           }
@@ -3374,12 +3441,36 @@ function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showT
         {isOwner ? (
           <div style={{ display: "grid", gap: 8 }}>
             <div style={{ background: "rgba(255,255,255,.1)", borderRadius: 16, padding: 12 }}>
-              <p style={{ margin: "0 0 4px", fontSize: 12, color: "rgba(255,255,255,.72)" }}>Seen by</p>
-              <p style={{ margin: 0, fontSize: 13 }}>{viewers.length ? viewers.join(", ") : "No viewers yet"}</p>
+              <p style={{ margin: "0 0 6px", fontSize: 12, color: "rgba(255,255,255,.72)" }}>Seen by</p>
+              {viewers.length ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {viewers.map((viewer) => (
+                    <button
+                      key={`${story.id}-viewer-${viewer.id || viewer.label}`}
+                      onClick={() => viewer.id && onOpenProfile?.(viewer.id)}
+                      style={{ border: "1px solid rgba(255,255,255,.18)", background: "rgba(255,255,255,.08)", color: C.white, borderRadius: 999, padding: "7px 10px", cursor: viewer.id ? "pointer" : "default", fontSize: 12 }}
+                    >
+                      {displayHandle(viewer.label, viewer.label)}
+                    </button>
+                  ))}
+                </div>
+              ) : <p style={{ margin: 0, fontSize: 13 }}>No viewers yet</p>}
             </div>
             <div style={{ background: "rgba(255,255,255,.1)", borderRadius: 16, padding: 12 }}>
-              <p style={{ margin: "0 0 4px", fontSize: 12, color: "rgba(255,255,255,.72)" }}>Appreciated by</p>
-              <p style={{ margin: 0, fontSize: 13 }}>{appreciators.length ? appreciators.join(", ") : "No appreciations yet"}</p>
+              <p style={{ margin: "0 0 6px", fontSize: 12, color: "rgba(255,255,255,.72)" }}>Appreciated by</p>
+              {appreciators.length ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {appreciators.map((viewer) => (
+                    <button
+                      key={`${story.id}-like-${viewer.id || viewer.label}`}
+                      onClick={() => viewer.id && onOpenProfile?.(viewer.id)}
+                      style={{ border: "1px solid rgba(255,255,255,.18)", background: "rgba(255,255,255,.08)", color: C.white, borderRadius: 999, padding: "7px 10px", cursor: viewer.id ? "pointer" : "default", fontSize: 12 }}
+                    >
+                      {displayHandle(viewer.label, viewer.label)}
+                    </button>
+                  ))}
+                </div>
+              ) : <p style={{ margin: 0, fontSize: 13 }}>No appreciations yet</p>}
             </div>
           </div>
         ) : (
@@ -3821,8 +3912,8 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
             <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 19, color: C.dark, margin: "0 0 2px" }}>{displayName}</h2>
             <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 4px" }}>{displayHandle(username)}</p>
             {profileData?.bio && <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 13, color: C.dark, margin: "0 0 4px", lineHeight: 1.5 }}>{profileData.bio}</p>}
-            {profile?.location && <button onClick={() => onOpenLocation?.(profile.location)} style={{ border: "none", background: "none", padding: 0, fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 14px", cursor: "pointer" }}>📍 Currently in: {profile.location}</button>}
-            {!profile?.location && profileData?.location && <button onClick={() => onOpenLocation?.(profileData.location)} style={{ border: "none", background: "none", padding: 0, fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 14px", cursor: "pointer" }}>📍 Currently in: {profileData.location}</button>}
+            {profile?.location && <button onClick={() => onOpenLocation?.(profile.location)} style={{ border: `1px solid ${C.beige}`, background: C.white, padding: "8px 12px", borderRadius: 999, fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 14px", cursor: "pointer", boxShadow: `0 4px 14px ${C.shadow}` }}>📍 Currently in: {profile.location}</button>}
+            {!profile?.location && profileData?.location && <button onClick={() => onOpenLocation?.(profileData.location)} style={{ border: `1px solid ${C.beige}`, background: C.white, padding: "8px 12px", borderRadius: 999, fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 14px", cursor: "pointer", boxShadow: `0 4px 14px ${C.shadow}` }}>📍 Currently in: {profileData.location}</button>}
             {profileData?.website && <div style={{ margin: "0 0 14px" }}><WebsiteBadge url={profileData.website} label="Open personal website" /></div>}
           </>
         )}
@@ -3857,7 +3948,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
         <MemoryArchiveGrid title="Your archived memories" posts={archivedStories} onOpenPost={onOpenPost} emptyText="Your older memories will gather here" />
 
         <ArcShelf posts={posts} title="Your Personal Lore" onOpenPost={onOpenPost} />
-        <DiaryTravelMap posts={posts} title="Your Travel Map" onPostClick={(post) => onOpenPost?.(post)} currentCountry={profileData?.country || currentCountry || profileData?.location} />
+        <DiaryTravelMap posts={posts} title="Your Travel Map" onPostClick={(post) => onOpenPost?.(post)} onOpenLocation={onOpenLocation} currentCountry={profileData?.country || currentCountry || profileData?.location} />
 
         {/* Tabs */}
         <div style={{ display: "flex", borderBottom: `2px solid ${C.beige}`, marginBottom: 14 }}>
@@ -4074,7 +4165,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
         <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, margin: "0 0 2px", fontSize: 26 }}>{profile.full_name || profile.username || "Diary user"}</h2>
         <p style={{ margin: "0 0 8px", color: C.brown, fontFamily: "'Lato',sans-serif" }}>{displayHandle(profile.username)}</p>
         {profile.bio && <p style={{ color: C.dark, fontSize: 13, lineHeight: 1.55, marginBottom: 8 }}>{profile.bio}</p>}
-        {profile.location && <button onClick={() => onOpenLocation?.(profile.location)} style={{ border: "none", background: "none", padding: 0, color: C.brown, fontSize: 12, marginBottom: 8, cursor: "pointer" }}>📍 Currently in: {profile.location}</button>}
+        {profile.location && <button onClick={() => onOpenLocation?.(profile.location)} style={{ border: `1px solid ${C.beige}`, background: C.white, padding: "8px 12px", borderRadius: 999, color: C.brown, fontSize: 12, marginBottom: 8, cursor: "pointer", boxShadow: `0 4px 14px ${C.shadow}` }}>📍 Currently in: {profile.location}</button>}
         {profile.website && <div style={{ marginBottom: 10 }}><WebsiteBadge url={profile.website} label="Open personal website" /></div>}
         {currentUser?.id !== profileId && <button onClick={handleBlock} style={{ border: "none", background: "none", color: C.red, cursor: "pointer", padding: 0, marginBottom: 16 }}>Block user</button>}
         {currentUser?.id !== profileId && isFollowing && relatedAccounts.length > 0 && (
@@ -4125,7 +4216,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
               emptyText="No archived memories yet"
             />
             <ArcShelf posts={posts} title={`${profile.full_name || profile.username || "Diary"}'s Personal Lore`} onOpenPost={onOpenPost} />
-            <DiaryTravelMap posts={posts} title={`${profile.full_name || profile.username || "Diary"}'s Travel Map`} onPostClick={(post) => onOpenPost?.(post)} currentCountry={profile.country || currentCountry || profile.location} />
+            <DiaryTravelMap posts={posts} title={`${profile.full_name || profile.username || "Diary"}'s Travel Map`} onPostClick={(post) => onOpenPost?.(post)} onOpenLocation={onOpenLocation} currentCountry={profile.country || currentCountry || profile.location} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
               {["posts", "journeys", "quotes"].map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)} style={{ background: activeTab === tab ? C.dark : C.white, color: activeTab === tab ? C.cream : C.brown, border: `1px solid ${C.beige}`, borderRadius: 14, padding: "11px 10px", cursor: "pointer", fontWeight: 800, textTransform: "capitalize", boxShadow: `0 4px 14px ${C.shadow}` }}>{tab}</button>
