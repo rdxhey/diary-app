@@ -29,6 +29,51 @@ const FILTERS = {
   none: "none",
 };
 
+const getThemePalette = (theme) => {
+  if (theme?.mode === "dark") {
+    return {
+      cream: "#121212",
+      white: "#1A1A1A",
+      dark: "#F5EDE2",
+      brown: "#CFB9A6",
+      beige: "#242424",
+      tan: "#726255",
+      shadow: "rgba(0,0,0,0.35)",
+    };
+  }
+  if (theme?.mode === "sepia") {
+    return {
+      cream: "#F4EBDD",
+      white: "#FFF8F0",
+      dark: "#4E3826",
+      brown: "#8A6648",
+      beige: "#E8D9C6",
+      tan: "#C9B093",
+      shadow: "rgba(78,56,38,0.14)",
+    };
+  }
+  if (theme?.mode === "custom" && theme?.tone === "dark") {
+    return {
+      cream: "#101010",
+      white: "rgba(22,22,22,0.92)",
+      dark: "#FFF9F2",
+      brown: "#E6D0C0",
+      beige: "rgba(255,255,255,0.08)",
+      tan: "#AA978A",
+      shadow: "rgba(0,0,0,0.38)",
+    };
+  }
+  return {
+    cream: "#FAF7F2",
+    beige: "#F0EBE1",
+    tan: "#D4C5B0",
+    brown: "#8B6F5E",
+    dark: "#4A3728",
+    white: "#FFFFFF",
+    shadow: "rgba(74,55,40,0.12)",
+  };
+};
+
 const displayHandle = (username, fallback = "user") => {
   const clean = String(username || fallback).trim().replace(/^@+/, "");
   return `@${clean || fallback}`;
@@ -3117,6 +3162,157 @@ function AdminReportsPage({ setPage, showToast }) {
   );
 }
 
+function BlockedUsersPage({ currentUser, setPage, showToast, onOpenProfile }) {
+  const [blocked, setBlocked] = useState([]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    (async () => {
+      const { data } = await supabase.from("blocks").select("blocked_id").eq("blocker_id", currentUser.id);
+      const ids = (data || []).map(row => row.blocked_id).filter(Boolean);
+      if (!ids.length) { setBlocked([]); return; }
+      const { data: profiles } = await supabase.from("profiles").select("id, username, full_name, avatar_url").in("id", ids);
+      setBlocked(profiles || []);
+    })();
+  }, [currentUser]);
+
+  const unblock = async (userId) => {
+    await supabase.from("blocks").delete().match({ blocker_id: currentUser.id, blocked_id: userId });
+    setBlocked(prev => prev.filter(user => user.id !== userId));
+    showToast?.("User unblocked");
+  };
+
+  return (
+    <div style={{ padding: "56px 16px 100px", background: C.cream, minHeight: "100vh" }}>
+      <PageHeader title="Blocked Users" subtitle="Manage people you have blocked" onBack={() => setPage("settings")} />
+      {blocked.length === 0 ? (
+        <div style={{ background: C.white, borderRadius: 20, padding: 24, textAlign: "center", boxShadow: `0 8px 24px ${C.shadow}` }}>
+          <p style={{ margin: 0, color: C.brown, fontFamily: "'Playfair Display',Georgia,serif", fontStyle: "italic" }}>You have not blocked anyone.</p>
+        </div>
+      ) : blocked.map((user) => (
+        <div key={user.id} style={{ display: "flex", alignItems: "center", gap: 12, background: C.white, borderRadius: 18, padding: 14, marginBottom: 10, boxShadow: `0 6px 18px ${C.shadow}` }}>
+          <button onClick={() => onOpenProfile?.(user.id)} style={{ border: "none", background: "none", padding: 0, cursor: "pointer" }}>
+            <Avatar src={user.avatar_url} size={50} active />
+          </button>
+          <div style={{ flex: 1 }}>
+            <button onClick={() => onOpenProfile?.(user.id)} style={{ border: "none", background: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+              <p style={{ margin: 0, color: C.dark, fontWeight: 800 }}>{displayHandle(user.username)}</p>
+              <p style={{ margin: "3px 0 0", color: C.brown, fontSize: 12 }}>{user.full_name || "Diary user"}</p>
+            </button>
+          </div>
+          <Btn variant="secondary" onClick={() => unblock(user.id)} style={{ padding: "9px 12px", borderRadius: 20 }}>Unblock</Btn>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CreatorAnalyticsPage({ currentUser, setPage }) {
+  const [stats, setStats] = useState({ posts: 0, likes: 0, comments: 0, saves: 0, followers: 0 });
+
+  useEffect(() => {
+    if (!currentUser) return;
+    (async () => {
+      const { data: ownPosts } = await supabase.from("posts").select("id").eq("user_id", currentUser.id);
+      const ids = (ownPosts || []).map(post => post.id);
+      const [likesRes, commentsRes, savesRes, followersRes] = await Promise.all([
+        ids.length ? supabase.from("likes").select("id", { count: "exact", head: true }).in("post_id", ids) : Promise.resolve({ count: 0 }),
+        ids.length ? supabase.from("comments").select("id", { count: "exact", head: true }).in("post_id", ids) : Promise.resolve({ count: 0 }),
+        ids.length ? supabase.from("bookmarks").select("id", { count: "exact", head: true }).in("post_id", ids) : Promise.resolve({ count: 0 }),
+        supabase.from("follows").select("id", { count: "exact", head: true }).eq("following_id", currentUser.id),
+      ]);
+      setStats({
+        posts: ids.length,
+        likes: likesRes.count || 0,
+        comments: commentsRes.count || 0,
+        saves: savesRes.count || 0,
+        followers: followersRes.count || 0,
+      });
+    })();
+  }, [currentUser]);
+
+  return (
+    <div style={{ padding: "56px 16px 100px", background: C.cream, minHeight: "100vh" }}>
+      <PageHeader title="Creator Analytics" subtitle="A clean view of your Diary reach" onBack={() => setPage("settings")} />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        {[
+          ["Posts", stats.posts],
+          ["Followers", stats.followers],
+          ["Appreciations", stats.likes],
+          ["Comments", stats.comments],
+          ["Saves", stats.saves],
+        ].map(([label, value]) => (
+          <div key={label} style={{ background: C.white, borderRadius: 18, padding: 18, boxShadow: `0 8px 24px ${C.shadow}` }}>
+            <p style={{ margin: "0 0 6px", color: C.tan, fontSize: 11, textTransform: "uppercase", letterSpacing: ".8px", fontWeight: 700 }}>{label}</p>
+            <p style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, fontSize: 30 }}>{value}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AdvertiseOnDiaryPage({ currentUser, setPage, showToast }) {
+  const [form, setForm] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("diary-ad-lead")) || { business_name: "", category: "food", address: "", website: "", notes: "" }; }
+    catch { return { business_name: "", category: "food", address: "", website: "", notes: "" }; }
+  });
+
+  const submitLead = () => {
+    localStorage.setItem("diary-ad-lead", JSON.stringify(form));
+    showToast?.("Advertising details saved. Diary will contact you from support@diary.com.");
+  };
+
+  return (
+    <div style={{ padding: "56px 16px 100px", background: C.cream, minHeight: "100vh" }}>
+      <PageHeader title="Advertise on Diary" subtitle="Native local discovery, not banner ads" onBack={() => setPage("settings")} />
+      <div style={{ background: C.white, borderRadius: 20, padding: 16, boxShadow: `0 8px 24px ${C.shadow}`, marginBottom: 18 }}>
+        <p style={{ margin: "0 0 8px", color: C.dark, lineHeight: 1.6 }}>
+          Diary Ads places local spots inside the feed as aesthetic diary entries. Businesses can promote food, stay, experience, or shop moments based on nearby discovery.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          {["Food", "Stay", "Experience", "Shop"].map((label) => (
+            <div key={label} style={{ background: C.beige, borderRadius: 14, padding: 12, color: C.dark, fontWeight: 700, textAlign: "center" }}>{label}</div>
+          ))}
+        </div>
+      </div>
+      <div style={{ background: C.white, borderRadius: 20, padding: 16, boxShadow: `0 8px 24px ${C.shadow}` }}>
+        <Input placeholder="Business name" value={form.business_name} onChange={e => setForm(prev => ({ ...prev, business_name: e.target.value }))} style={{ marginBottom: 10 }} />
+        <select value={form.category} onChange={e => setForm(prev => ({ ...prev, category: e.target.value }))} style={{ width: "100%", padding: "12px 14px", borderRadius: 14, border: `1px solid ${C.beige}`, background: C.white, color: C.dark, marginBottom: 10 }}>
+          <option value="food">Food</option>
+          <option value="stay">Stay</option>
+          <option value="experience">Experience</option>
+          <option value="shop">Shop</option>
+        </select>
+        <Input placeholder="Address" value={form.address} onChange={e => setForm(prev => ({ ...prev, address: e.target.value }))} style={{ marginBottom: 10 }} />
+        <Input placeholder="Website" value={form.website} onChange={e => setForm(prev => ({ ...prev, website: e.target.value }))} style={{ marginBottom: 10 }} />
+        <Input placeholder="Tell Diary about your space" value={form.notes} onChange={e => setForm(prev => ({ ...prev, notes: e.target.value }))} multiline />
+        <Btn variant="pink" onClick={submitLead} style={{ width: "100%", marginTop: 12, borderRadius: 16 }}>Save advertiser profile</Btn>
+        <a href="mailto:support@diary.com?subject=Advertise%20on%20Diary" style={{ display: "block", marginTop: 12, color: C.pink, textDecoration: "none", fontWeight: 800 }}>Email Diary Ads team</a>
+      </div>
+    </div>
+  );
+}
+
+function DiaryProPage({ setPage }) {
+  const perks = ["Custom themes", "Advanced arc layouts", "Travel map upgrades", "Priority support"];
+  return (
+    <div style={{ padding: "56px 16px 100px", background: C.cream, minHeight: "100vh" }}>
+      <PageHeader title="Diary Pro" subtitle="A polished premium tier" onBack={() => setPage("settings")} />
+      <div style={{ background: C.white, borderRadius: 20, padding: 18, boxShadow: `0 8px 24px ${C.shadow}` }}>
+        <p style={{ margin: "0 0 12px", color: C.dark, lineHeight: 1.6 }}>
+          Diary Pro is being shaped into a premium creator tier. The page stays usable and clear until billing is wired in.
+        </p>
+        {perks.map((perk) => (
+          <div key={perk} style={{ padding: "10px 0", borderBottom: `1px solid ${C.beige}`, color: C.dark, fontWeight: 700 }}>
+            {perk}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ============================================================
 // SETTINGS PAGE
 // ============================================================
@@ -3151,6 +3347,11 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
     if (!currentUser) return;
     const { data, error } = await supabase.from("profiles").upsert({ id: currentUser.id, ...updates }).select("*").single();
     if (error) {
+      if (/default_privacy|comments_from|is_private|country/i.test(error.message || "")) {
+        const merged = { ...(profile || {}), ...updates };
+        onProfileUpdated?.(merged);
+        return merged;
+      }
       showToast(error.message || "Could not save settings", "error");
       return null;
     }
@@ -3246,6 +3447,11 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
 
   const sectionTitle = (label) => <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 10, fontWeight: 700, color: C.tan, letterSpacing: "1px", textTransform: "uppercase", margin: "0 0 7px" }}>{label}</p>;
   const cardStyle = { background: C.white, borderRadius: 16, padding: 14, boxShadow: `0 4px 16px ${C.shadow}`, marginBottom: 22 };
+  const settingsLink = (label, target, danger = false) => (
+    <button onClick={() => setPage(target)} style={{ width: "100%", border: "none", background: "none", padding: "12px 0", textAlign: "left", cursor: "pointer", color: danger ? C.red : C.dark, fontWeight: danger ? 800 : 700, borderBottom: `1px solid ${C.beige}` }}>
+      {label}
+    </button>
+  );
 
   return (
     <div style={{ padding: "56px 16px 100px", background: C.cream, minHeight: "100vh" }}>
@@ -3264,6 +3470,16 @@ function SettingsPage({ onLogout, setPage, showToast, currentUser, profile, onPr
             <button onClick={handleChangePassword} style={{ border: "none", background: C.white, borderRadius: 14, padding: "12px 14px", cursor: "pointer", color: C.dark, fontWeight: 700, borderColor: C.beige, borderStyle: "solid", borderWidth: 1 }}>Change password</button>
           </div>
         </div>
+      </div>
+
+      {sectionTitle("Community")}
+      <div style={cardStyle}>
+        {settingsLink("Blocked users", "blockedUsers")}
+        {settingsLink("Creator analytics", "creatorAnalytics")}
+        {settingsLink("Advertise on Diary", "advertiseDiary")}
+        <button onClick={() => setPage("diaryPro")} style={{ width: "100%", border: "none", background: "none", padding: "12px 0 0", textAlign: "left", cursor: "pointer", color: C.dark, fontWeight: 700 }}>
+          Diary Pro
+        </button>
       </div>
 
       {sectionTitle("Privacy")}
@@ -3714,6 +3930,8 @@ export default function DiaryApp() {
     try { return JSON.parse(localStorage.getItem("diary-theme")) || { mode: "light", backgroundImage: "" }; }
     catch { return { mode: "light", backgroundImage: "" }; }
   });
+  const appliedTheme = getThemePalette(theme);
+  Object.assign(C, appliedTheme);
 
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
@@ -3727,15 +3945,6 @@ export default function DiaryApp() {
 
   useEffect(() => {
     localStorage.setItem("diary-theme", JSON.stringify(theme));
-    if (theme.mode === "dark") {
-      C.cream = "#121212"; C.white = "#1A1A1A"; C.dark = "#F5EDE2"; C.brown = "#CFB9A6"; C.beige = "#242424"; C.tan = "#726255"; C.shadow = "rgba(0,0,0,0.35)";
-    } else if (theme.mode === "sepia") {
-      C.cream = "#F4EBDD"; C.white = "#FFF8F0"; C.dark = "#4E3826"; C.brown = "#8A6648"; C.beige = "#E8D9C6"; C.tan = "#C9B093"; C.shadow = "rgba(78,56,38,0.14)";
-    } else if (theme.mode === "custom" && theme.tone === "dark") {
-      C.cream = "#101010"; C.white = "rgba(22,22,22,0.92)"; C.dark = "#FFF9F2"; C.brown = "#E6D0C0"; C.beige = "rgba(255,255,255,0.08)"; C.tan = "#AA978A"; C.shadow = "rgba(0,0,0,0.38)";
-    } else {
-      C.cream = "#FAF7F2"; C.beige = "#F0EBE1"; C.tan = "#D4C5B0"; C.brown = "#8B6F5E"; C.dark = "#4A3728"; C.white = "#FFFFFF"; C.shadow = "rgba(74,55,40,0.12)";
-    }
   }, [theme]);
 
   useEffect(() => {
@@ -3851,6 +4060,10 @@ export default function DiaryApp() {
           {page === "publicProfile" && <PublicProfilePage profileId={viewProfileId} currentUser={currentUser} setPage={setPage} showToast={showToast} onMessageUser={setDmInitialUser} onOpenPost={openPost} onOpenProfile={openProfile} />}
           {page === "settings" && <SettingsPage onLogout={handleLogout} setPage={setPage} showToast={showToast} currentUser={currentUser} profile={profile} onProfileUpdated={setProfile} theme={theme} setTheme={setTheme} onThemeImage={handleThemeImage} currentCountry={currentCountry} setCurrentCountry={setCurrentCountry} />}
           {page === "adminReports" && <AdminReportsPage setPage={setPage} showToast={showToast} />}
+          {page === "blockedUsers" && <BlockedUsersPage currentUser={currentUser} setPage={setPage} showToast={showToast} onOpenProfile={openProfile} />}
+          {page === "creatorAnalytics" && <CreatorAnalyticsPage currentUser={currentUser} setPage={setPage} />}
+          {page === "advertiseDiary" && <AdvertiseOnDiaryPage currentUser={currentUser} setPage={setPage} showToast={showToast} />}
+          {page === "diaryPro" && <DiaryProPage setPage={setPage} />}
           {page === "notifications" && <NotificationsPage currentUser={currentUser} setPage={setPage} onOpenProfile={openProfile} />}
           {page === "dms" && <DMsPage2 currentUser={currentUser} setPage={setPage} showToast={showToast} initialUser={dmInitialUser} onOpenProfile={openProfile} />}
           {page === "postViewer" && <PostViewerPage post={focusedPost} setPage={setPage} showToast={showToast} />}
