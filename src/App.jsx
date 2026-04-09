@@ -290,6 +290,7 @@ const resolveInputIcon = (icon) => {
 
 function Input({ placeholder, type = "text", value, onChange, icon, style = {}, multiline = false }) {
   const iconLabel = resolveInputIcon(icon);
+  const isSearchIcon = String(icon || "").trim().toLowerCase() === "search";
   const shared = {
     width: "100%", padding: iconLabel ? "13px 14px 13px 40px" : "13px 14px",
     border: `1.5px solid ${C.tan}`, borderRadius: 12,
@@ -299,7 +300,11 @@ function Input({ placeholder, type = "text", value, onChange, icon, style = {}, 
   };
   return (
     <div style={{ position: "relative", width: "100%" }}>
-      {iconLabel && <span style={{ position: "absolute", left: 14, top: multiline ? 14 : "50%", transform: multiline ? "none" : "translateY(-50%)", color: C.tan, fontSize: 15 }}>{iconLabel}</span>}
+      {iconLabel && (
+        <span style={{ position: "absolute", left: 14, top: multiline ? 14 : "50%", transform: multiline ? "none" : "translateY(-50%)", color: C.tan, fontSize: 15, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16 }}>
+          {isSearchIcon ? <SearchGlyph color={C.tan} size={16} /> : iconLabel}
+        </span>
+      )}
       {multiline
         ? <textarea placeholder={placeholder} value={value} onChange={onChange} style={{ ...shared, resize: "none", height: 85 }}
             onFocus={e => e.target.style.borderColor = C.pink} onBlur={e => e.target.style.borderColor = C.tan} />
@@ -307,6 +312,53 @@ function Input({ placeholder, type = "text", value, onChange, icon, style = {}, 
             onFocus={e => e.target.style.borderColor = C.pink} onBlur={e => e.target.style.borderColor = C.tan} />
       }
     </div>
+  );
+}
+
+function SearchGlyph({ color = C.tan, size = 16 }) {
+  return (
+    <span style={{ position: "relative", width: size, height: size, display: "inline-block" }}>
+      <span style={{
+        position: "absolute",
+        inset: 0,
+        width: size - 5,
+        height: size - 5,
+        borderRadius: "50%",
+        border: `1.8px solid ${color}`,
+        boxSizing: "border-box",
+      }} />
+      <span style={{
+        position: "absolute",
+        width: 6,
+        height: 1.8,
+        background: color,
+        borderRadius: 999,
+        right: 0,
+        bottom: 1,
+        transform: "rotate(45deg)",
+        transformOrigin: "center",
+      }} />
+    </span>
+  );
+}
+
+function CommentGlyph({ color = "currentColor", size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M7 18.5L3 21V6.5C3 5.12 4.12 4 5.5 4H18.5C19.88 4 21 5.12 21 6.5V15.5C21 16.88 19.88 18 18.5 18H7Z" stroke={color} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ShareGlyph({ color = "currentColor", size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="18" cy="5.5" r="2.2" stroke={color} strokeWidth="1.9" />
+      <circle cx="6" cy="12" r="2.2" stroke={color} strokeWidth="1.9" />
+      <circle cx="18" cy="18.5" r="2.2" stroke={color} strokeWidth="1.9" />
+      <path d="M8 11L15.8 6.6" stroke={color} strokeWidth="1.9" strokeLinecap="round" />
+      <path d="M8 13L15.8 17.4" stroke={color} strokeWidth="1.9" strokeLinecap="round" />
+    </svg>
   );
 }
 
@@ -679,6 +731,7 @@ function placeToCoords(place) {
 const HIDDEN_GEMS = [
   {
     id: "gem-kyoto",
+    country: "Japan",
     name: "Kamo River Tea Corner",
     description: "A quiet tea stop with river air and soft late-evening light.",
     sponsor_link: "https://diary-app-eight-beta.vercel.app/",
@@ -688,6 +741,7 @@ const HIDDEN_GEMS = [
   },
   {
     id: "gem-nara",
+    country: "Japan",
     name: "Lantern Path Bookshop",
     description: "Hidden books, paper textures, and slow nostalgic playlists.",
     sponsor_link: "https://diary-app-eight-beta.vercel.app/",
@@ -697,6 +751,7 @@ const HIDDEN_GEMS = [
   },
   {
     id: "gem-hakone",
+    country: "Japan",
     name: "Mist Onsen Viewpoint",
     description: "A calm viewpoint where the mountain fog rolls in like film grain.",
     sponsor_link: "https://diary-app-eight-beta.vercel.app/",
@@ -704,7 +759,63 @@ const HIDDEN_GEMS = [
     lat: 35.2323,
     lng: 139.1069,
   },
+  {
+    id: "gem-goa",
+    country: "India",
+    name: "Fontainhas Quiet Corner",
+    description: "Pastel streets, old balconies, and soft afternoon stillness.",
+    sponsor_link: "https://diary-app-eight-beta.vercel.app/",
+    image: "https://images.unsplash.com/photo-1518509562904-e7ef99cdcc86?w=600&q=80",
+    lat: 15.4989,
+    lng: 73.8278,
+  },
+  {
+    id: "gem-jaipur",
+    country: "India",
+    name: "Pink City Chai Room",
+    description: "A hidden tea room with dusty pink walls and slow evening chatter.",
+    sponsor_link: "https://diary-app-eight-beta.vercel.app/",
+    image: "https://images.unsplash.com/photo-1477587458883-47145ed94245?w=600&q=80",
+    lat: 26.9239,
+    lng: 75.8267,
+  },
+  {
+    id: "gem-kochi",
+    country: "India",
+    name: "Fort Kochi Rain Walk",
+    description: "Sea breeze, colonial lanes, and monsoon light worth remembering.",
+    sponsor_link: "https://diary-app-eight-beta.vercel.app/",
+    image: "https://images.unsplash.com/photo-1593693397690-362cb9666fc2?w=600&q=80",
+    lat: 9.9654,
+    lng: 76.2425,
+  },
+  {
+    id: "gem-paris",
+    country: "France",
+    name: "Canal Notebook Cafe",
+    description: "A canal-side spot for film notes, espresso, and quiet sketches.",
+    sponsor_link: "https://diary-app-eight-beta.vercel.app/",
+    image: "https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=600&q=80",
+    lat: 48.8698,
+    lng: 2.363,
+  },
+  {
+    id: "gem-london",
+    country: "United Kingdom",
+    name: "Fog Lane Record Room",
+    description: "Soft vinyl, rainy glass, and a warm corner to disappear into.",
+    sponsor_link: "https://diary-app-eight-beta.vercel.app/",
+    image: "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=600&q=80",
+    lat: 51.5074,
+    lng: -0.1278,
+  },
 ];
+
+const getGemsForCountry = (country) => {
+  const normalized = (country || "").trim().toLowerCase();
+  const matches = HIDDEN_GEMS.filter((gem) => gem.country?.toLowerCase() === normalized);
+  return matches.length ? matches : HIDDEN_GEMS.slice(0, 3);
+};
 
 const WEATHER_LABELS = {
   0: "Clear",
@@ -743,11 +854,12 @@ async function buildAtmosphericStamp({ lat, lng, locationLabel }) {
   return `${timeLabel} // ${locationLabel || "Quiet Air"} // Diary`;
 }
 
-function DiaryTravelMap({ posts = [], title = "Travel Map", onPostClick }) {
+function DiaryTravelMap({ posts = [], title = "Travel Map", onPostClick, currentCountry = "" }) {
   const mapped = posts.filter(p => p.location || p.location_name || p.lat || p.lng).slice(0, 18);
   const mapRef = useRef(null);
   const mapElRef = useRef(null);
   const routeId = useMemo(() => `diary-route-${Math.random().toString(36).slice(2, 9)}`, []);
+  const visibleGems = useMemo(() => getGemsForCountry(currentCountry), [currentCountry]);
   const mappedCoords = useMemo(() => (
     mapped.map((post, i) => {
       const fallback = placeToCoords(post.location_name || post.location || `post-${i}`);
@@ -812,7 +924,7 @@ function DiaryTravelMap({ posts = [], title = "Travel Map", onPostClick }) {
       ).addTo(mapRef.current);
       return marker;
     });
-    const gemMarkers = HIDDEN_GEMS.map((gem) => {
+    const gemMarkers = visibleGems.map((gem) => {
       const el = document.createElement("button");
       el.type = "button";
       el.textContent = "✦";
@@ -834,7 +946,7 @@ function DiaryTravelMap({ posts = [], title = "Travel Map", onPostClick }) {
       if (mapRef.current?.getLayer(routeId)) mapRef.current.removeLayer(routeId);
       if (mapRef.current?.getSource(routeId)) mapRef.current.removeSource(routeId);
     };
-  }, [mappedCoords, onPostClick, routeId]);
+  }, [currentCountry, mappedCoords, onPostClick, routeId, visibleGems]);
 
   return (
     <div className="ios-card" style={{ background: C.white, borderRadius: 24, padding: 14, marginBottom: 18, boxShadow: `0 12px 36px ${C.shadow}` }}>
@@ -1518,6 +1630,8 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
   const [holdProgress, setHoldProgress] = useState(0);
   const holdTimerRef = useRef(null);
   const holdStartRef = useRef(0);
+  const lastTapRef = useRef(0);
+  const holdConsumedRef = useRef(false);
   const appreciated = Boolean(post.liked);
 
   const clearHold = () => {
@@ -1533,8 +1647,28 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
     if (appreciated) return;
     const rect = target.getBoundingClientRect();
     setBurst({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+    holdConsumedRef.current = true;
     onLike(post.id, false);
     showToast("Appreciation sent privately");
+  };
+
+  const handleToggleLike = (target) => {
+    if (holdConsumedRef.current) {
+      holdConsumedRef.current = false;
+      return;
+    }
+    if (!currentUser) { showToast("Sign in to like posts", "error"); return; }
+    if (target) {
+      const rect = target.getBoundingClientRect();
+      setBurst({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+    }
+    onLike(post.id, appreciated);
+    showToast(appreciated ? "Appreciation removed" : "Diary appreciated");
+  };
+
+  const handleImageDoubleLike = (target) => {
+    if (appreciated) return;
+    handleToggleLike(target);
   };
 
   const startHold = (event) => {
@@ -1557,6 +1691,14 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
   const stopHold = () => {
     if (appreciated) return;
     clearHold();
+  };
+
+  const handleImageTap = (event) => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 280) {
+      handleImageDoubleLike(event.currentTarget);
+    }
+    lastTapRef.current = now;
   };
 
   const handleShare = async () => {
@@ -1695,8 +1837,8 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
       </div>
 
       {/* Image */}
-      <div>
-        <DiaryEntryVisual post={post} aspectRatio="4/3" onClick={() => setShowFullDiary(true)} />
+      <div onDoubleClick={handleImageTap} onTouchEnd={handleImageTap}>
+        <DiaryEntryVisual post={post} aspectRatio="4/3" />
       </div>
 
       {/* Actions */}
@@ -1704,6 +1846,7 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
           <div style={{ display: "flex", gap: 16 }}>
             <button
+              onClick={(e) => handleToggleLike(e.currentTarget)}
               onMouseDown={startHold}
               onMouseUp={stopHold}
               onMouseLeave={stopHold}
@@ -1729,10 +1872,12 @@ function PostCard({ post, currentUser, onLike, onBookmark, showToast, onOpenProf
               <span style={{ position: "absolute", inset: 3, borderRadius: "50%", background: C.white }} />
               <span style={{ position: "relative", zIndex: 1, fontSize: 18, color: appreciated ? C.pink : C.dark, fontFamily: "'Playfair Display',Georgia,serif", fontWeight: 900 }}>D</span>
             </button>
-            <button onClick={toggleComments} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, color: C.tan, fontSize: 13, fontFamily: "'Lato',sans-serif", fontWeight: 700 }}>
-              <span style={{ fontSize: 18 }}>💬</span>
+            <button onClick={toggleComments} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: C.dark, width: 28, height: 28, padding: 0 }}>
+              <CommentGlyph color={C.dark} size={22} />
             </button>
-            <button onClick={handleShare} style={{ background: "none", border: "none", cursor: "pointer", color: C.dark, fontSize: 18 }}>↗</button>
+            <button onClick={handleShare} style={{ background: "none", border: "none", cursor: "pointer", color: C.dark, width: 28, height: 28, padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+              <ShareGlyph color={C.dark} size={22} />
+            </button>
           </div>
           <button onClick={() => onBookmark(post.id, post.bookmarked)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 20, color: post.bookmarked ? C.gold : C.tan }}>
             {post.bookmarked ? "🔖" : "🏷️"}
@@ -1845,7 +1990,7 @@ const HEADINGS = {
   cultural: { title: "Cultural Diaries", sub: "Stories woven into history" },
 };
 
-function HomePage({ currentUser, profile, currentCountry, setPage, showToast, onOpenProfile, onOpenPost }) {
+function HomePage({ currentUser, profile, currentCountry, setPage, showToast, onOpenProfile, onOpenPost, onSetDiscoverSeed }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [category, setCategory] = useState("all");
@@ -1854,6 +1999,7 @@ function HomePage({ currentUser, profile, currentCountry, setPage, showToast, on
   const [homeStoryGroup, setHomeStoryGroup] = useState(null);
   const [homeStoryIndex, setHomeStoryIndex] = useState(0);
   const countryLabel = (currentCountry || profile?.country || "").trim();
+  const visibleGems = useMemo(() => getGemsForCountry(countryLabel), [countryLabel]);
   const storyGroups = buildStoryGroupsByUser(posts);
   const seenIds = getSeenStoryIds(currentUser?.id);
   const feedMoments = useMemo(() => {
@@ -1862,15 +2008,23 @@ function HomePage({ currentUser, profile, currentCountry, setPage, showToast, on
     posts.forEach((post, index) => {
       inserted.push({ type: "post", value: post });
       if ((index + 1) % 4 === 0) {
-        const gem = HIDDEN_GEMS[Math.floor(index / 4) % HIDDEN_GEMS.length];
+        const gem = visibleGems[Math.floor(index / 4) % visibleGems.length];
         inserted.push({ type: "gem", value: gem });
       }
     });
     return inserted;
-  }, [posts]);
+  }, [posts, visibleGems]);
   const heading = category === "all"
     ? { title: `Moments in ${countryLabel || "your world"}`, sub: countryLabel ? `Diary moments around ${countryLabel}` : HEADINGS.all.sub }
     : (HEADINGS[category] || HEADINGS.all);
+
+  const handleLogoClick = () => {
+    if (window.scrollY > 120) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    window.location.reload();
+  };
 
   const fetchPosts = useCallback(async () => {
     setLoading(true);
@@ -1972,7 +2126,9 @@ function HomePage({ currentUser, profile, currentCountry, setPage, showToast, on
       {/* Header */}
       <div style={{ padding: "52px 20px 14px", background: C.cream, position: "sticky", top: 0, zIndex: 50, borderBottom: `1px solid ${C.beige}` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <DiaryLogo size={25} />
+          <button onClick={handleLogoClick} style={{ border: "none", background: "none", padding: 0, cursor: "pointer" }} aria-label="Go to top or reload Diary">
+            <DiaryLogo size={25} />
+          </button>
           <div style={{ display: "flex", gap: 14 }}>
             <button onClick={() => setPage("notifications")} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer" }}>🔔</button>
             <button onClick={() => setPage("dms")} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer" }}>✉️</button>
@@ -2146,8 +2302,8 @@ function QuoteCard({ post, showToast, onOpenProfile, onOpenPost }) {
       </div>
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={() => showToast("Diary liked it")} style={{ border: "none", background: "none", cursor: "pointer", color: C.dark }}>❤️</button>
-        <button onClick={() => onOpenPost?.(post)} style={{ border: "none", background: "none", cursor: "pointer", color: C.dark }}>💬</button>
-        <button onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/?post=${post.id}`).then(() => showToast("Quote link copied!"))} style={{ border: "none", background: "none", cursor: "pointer", color: C.dark }}>🔄</button>
+        <button onClick={() => onOpenPost?.(post)} style={{ border: "none", background: "none", cursor: "pointer", color: C.dark, width: 28, height: 28, padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" }}><CommentGlyph color={C.dark} size={22} /></button>
+        <button onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/?post=${post.id}`).then(() => showToast("Quote link copied!"))} style={{ border: "none", background: "none", cursor: "pointer", color: C.dark, width: 28, height: 28, padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" }}><ShareGlyph color={C.dark} size={22} /></button>
       </div>
     </div>
   );
@@ -2437,7 +2593,7 @@ function DiscoverPage(props) {
   return <DiscoverPage2 {...props} forceMode="discover" />;
 }
 
-function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMode = "discover" }) {
+function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMode = "discover", currentCountry = "", discoverSeed = null, onConsumeDiscoverSeed }) {
   const [search, setSearch] = useState("");
   const [results, setResults] = useState([]);
   const [posts, setPosts] = useState([]);
@@ -2465,7 +2621,13 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
     "gem-kyoto": "Kyoto",
     "gem-nara": "Nara",
     "gem-hakone": "Hakone",
+    "gem-goa": "Goa",
+    "gem-jaipur": "Jaipur",
+    "gem-kochi": "Kochi",
+    "gem-paris": "Paris",
+    "gem-london": "London",
   };
+  const visibleGems = useMemo(() => getGemsForCountry(currentCountry), [currentCountry]);
 
   const loadFeed = useCallback(async () => {
     let query = supabase.from("posts").select("*, profiles(username, avatar_url)").order("created_at", { ascending: false }).limit(30);
@@ -2478,6 +2640,13 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
 
   useEffect(() => { loadFeed(); }, [loadFeed]);
   useEffect(() => { setMode(forceMode); }, [forceMode]);
+  useEffect(() => {
+    if (!discoverSeed?.term) return;
+    setSearch(discoverSeed.term);
+    if (discoverSeed.type === "location") loadByLocation(discoverSeed.term);
+    else if (discoverSeed.type === "search") handleSearch();
+    onConsumeDiscoverSeed?.();
+  }, [discoverSeed]);
 
   const handleSearch = async () => {
     if (!search.trim()) return;
@@ -2595,7 +2764,7 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
           <div style={{ marginBottom: 18 }}>
             <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 15, color: C.dark, margin: "0 0 10px" }}>Hidden Gems</h3>
             <div style={{ display: "grid", gap: 12 }}>
-              {HIDDEN_GEMS.map((gem) => (
+              {visibleGems.map((gem) => (
                 <button key={gem.id} onClick={() => loadByGem(gem)} style={{ display: "grid", gridTemplateColumns: "84px 1fr auto", gap: 12, alignItems: "center", border: "none", background: C.white, borderRadius: 18, padding: 10, boxShadow: `0 8px 24px ${C.shadow}`, cursor: "pointer", textAlign: "left" }}>
                   <img src={gem.image} alt="" style={{ width: 84, height: 84, objectFit: "cover", borderRadius: 14, display: "block" }} />
                   <div>
@@ -3362,7 +3531,7 @@ function MemoriesPage({ currentUser, showToast, onOpenPost, onOpenProfile, setPa
 // ============================================================
 // PROFILE PAGE — REAL PROFILE FROM SUPABASE
 // ============================================================
-function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onProfileUpdated, onOpenPost, onOpenProfile }) {
+function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onProfileUpdated, onOpenPost, onOpenProfile, onOpenLocation, currentCountry }) {
   const [posts, setPosts] = useState([]);
   const [savedPosts, setSavedPosts] = useState([]);
   const [activeTab, setActiveTab] = useState("posts");
@@ -3557,8 +3726,8 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
             <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", fontSize: 19, color: C.dark, margin: "0 0 2px" }}>{displayName}</h2>
             <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 4px" }}>{displayHandle(username)}</p>
             {profileData?.bio && <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 13, color: C.dark, margin: "0 0 4px", lineHeight: 1.5 }}>{profileData.bio}</p>}
-            {profile?.location && <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 14px" }}>📍 Currently in: {profile.location}</p>}
-            {!profile?.location && profileData?.location && <p style={{ fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 14px" }}>Currently in: {profileData.location}</p>}
+            {profile?.location && <button onClick={() => onOpenLocation?.(profile.location)} style={{ border: "none", background: "none", padding: 0, fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 14px", cursor: "pointer" }}>📍 Currently in: {profile.location}</button>}
+            {!profile?.location && profileData?.location && <button onClick={() => onOpenLocation?.(profileData.location)} style={{ border: "none", background: "none", padding: 0, fontFamily: "'Lato',sans-serif", fontSize: 12, color: C.brown, margin: "0 0 14px", cursor: "pointer" }}>📍 Currently in: {profileData.location}</button>}
             {profileData?.website && <div style={{ margin: "0 0 14px" }}><WebsiteBadge url={profileData.website} label="Open personal website" /></div>}
           </>
         )}
@@ -3593,7 +3762,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
         <MemoryArchiveGrid title="Your archived memories" posts={archivedStories} onOpenPost={onOpenPost} emptyText="Your older memories will gather here" />
 
         <ArcShelf posts={posts} title="Your Personal Lore" onOpenPost={onOpenPost} />
-        <DiaryTravelMap posts={posts} title="Your Travel Map" onPostClick={(post) => onOpenPost?.(post)} />
+        <DiaryTravelMap posts={posts} title="Your Travel Map" onPostClick={(post) => onOpenPost?.(post)} currentCountry={profileData?.country || currentCountry || profileData?.location} />
 
         {/* Tabs */}
         <div style={{ display: "flex", borderBottom: `2px solid ${C.beige}`, marginBottom: 14 }}>
@@ -3645,7 +3814,7 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
 // ============================================================
 // PUBLIC PROFILE PAGE
 // ============================================================
-function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessageUser, onOpenPost, onOpenProfile }) {
+function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessageUser, onOpenPost, onOpenProfile, onOpenLocation, currentCountry }) {
   const [profile, setProfile] = useState(null);
   const [posts, setPosts] = useState([]);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -3754,7 +3923,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
         <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", color: C.dark, margin: "0 0 2px", fontSize: 26 }}>{profile.full_name || profile.username || "Diary user"}</h2>
         <p style={{ margin: "0 0 8px", color: C.brown, fontFamily: "'Lato',sans-serif" }}>{displayHandle(profile.username)}</p>
         {profile.bio && <p style={{ color: C.dark, fontSize: 13, lineHeight: 1.55, marginBottom: 8 }}>{profile.bio}</p>}
-        {profile.location && <p style={{ color: C.brown, fontSize: 12, marginBottom: 8 }}>Currently in: {profile.location}</p>}
+        {profile.location && <button onClick={() => onOpenLocation?.(profile.location)} style={{ border: "none", background: "none", padding: 0, color: C.brown, fontSize: 12, marginBottom: 8, cursor: "pointer" }}>📍 Currently in: {profile.location}</button>}
         {profile.website && <div style={{ marginBottom: 10 }}><WebsiteBadge url={profile.website} label="Open personal website" /></div>}
         {currentUser?.id !== profileId && <button onClick={handleBlock} style={{ border: "none", background: "none", color: C.red, cursor: "pointer", padding: 0, marginBottom: 16 }}>Block user</button>}
         <div style={{ display: "flex", justifyContent: "space-around", background: C.white, borderRadius: 18, padding: "14px 10px", margin: "8px 0 18px", boxShadow: `0 8px 24px ${C.shadow}` }}>
@@ -3797,7 +3966,7 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
               emptyText="No archived memories yet"
             />
             <ArcShelf posts={posts} title={`${profile.full_name || profile.username || "Diary"}'s Personal Lore`} onOpenPost={onOpenPost} />
-            <DiaryTravelMap posts={posts} title={`${profile.full_name || profile.username || "Diary"}'s Travel Map`} onPostClick={(post) => onOpenPost?.(post)} />
+            <DiaryTravelMap posts={posts} title={`${profile.full_name || profile.username || "Diary"}'s Travel Map`} onPostClick={(post) => onOpenPost?.(post)} currentCountry={profile.country || currentCountry || profile.location} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
               {["posts", "journeys", "quotes"].map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)} style={{ background: activeTab === tab ? C.dark : C.white, color: activeTab === tab ? C.cream : C.brown, border: `1px solid ${C.beige}`, borderRadius: 14, padding: "11px 10px", cursor: "pointer", fontWeight: 800, textTransform: "capitalize", boxShadow: `0 4px 14px ${C.shadow}` }}>{tab}</button>
@@ -4973,6 +5142,7 @@ export default function DiaryApp() {
   const [profile, setProfile] = useState(null);
   const [mfaFactorId, setMfaFactorId] = useState(null);
   const [currentCountry, setCurrentCountry] = useState(() => localStorage.getItem("diary-current-country") || "");
+  const [discoverSeed, setDiscoverSeed] = useState(null);
   const [viewProfileId, setViewProfileId] = useState(null);
   const [dmInitialUser, setDmInitialUser] = useState(null);
   const [focusedPost, setFocusedPost] = useState(null);
@@ -5080,6 +5250,12 @@ export default function DiaryApp() {
     setPage("postViewer");
   };
 
+  const openDiscoverLocation = (term) => {
+    if (!term) return;
+    setDiscoverSeed({ term, type: "location" });
+    setPage("discover");
+  };
+
   // Check existing session
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -5151,13 +5327,13 @@ export default function DiaryApp() {
 
         {screen === "app" && (
           <>
-            {page === "home" && <HomePage currentUser={currentUser} profile={profile} currentCountry={currentCountry} setPage={setPage} showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} />}
-            {page === "quotes" && <DiaryQuotesPage showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} setPage={setPage} />}
-            {page === "discover" && <DiscoverPage2 showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} setPage={setPage} />}
+            {page === "home" && <HomePage currentUser={currentUser} profile={profile} currentCountry={currentCountry} setPage={setPage} showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} onSetDiscoverSeed={setDiscoverSeed} />}
+            {page === "quotes" && <DiaryQuotesPage showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} setPage={setPage} currentCountry={currentCountry} discoverSeed={discoverSeed} onConsumeDiscoverSeed={() => setDiscoverSeed(null)} />}
+            {page === "discover" && <DiscoverPage2 showToast={showToast} onOpenProfile={openProfile} onOpenPost={openPost} setPage={setPage} currentCountry={currentCountry} discoverSeed={discoverSeed} onConsumeDiscoverSeed={() => setDiscoverSeed(null)} />}
             {page === "create" && <CreatePage currentUser={currentUser} showToast={showToast} setPage={setPage} />}
             {page === "memories" && <MemoriesPage currentUser={currentUser} showToast={showToast} onOpenPost={openPost} onOpenProfile={openProfile} setPage={setPage} />}
-            {page === "profile" && <ProfilePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onLogout={handleLogout} onProfileUpdated={setProfile} onOpenPost={openPost} onOpenProfile={openProfile} />}
-            {page === "publicProfile" && <PublicProfilePage profileId={viewProfileId} currentUser={currentUser} setPage={setPage} showToast={showToast} onMessageUser={setDmInitialUser} onOpenPost={openPost} onOpenProfile={openProfile} />}
+            {page === "profile" && <ProfilePage currentUser={currentUser} profile={profile} setPage={setPage} showToast={showToast} onLogout={handleLogout} onProfileUpdated={setProfile} onOpenPost={openPost} onOpenProfile={openProfile} onOpenLocation={openDiscoverLocation} currentCountry={currentCountry} />}
+            {page === "publicProfile" && <PublicProfilePage profileId={viewProfileId} currentUser={currentUser} setPage={setPage} showToast={showToast} onMessageUser={setDmInitialUser} onOpenPost={openPost} onOpenProfile={openProfile} onOpenLocation={openDiscoverLocation} currentCountry={currentCountry} />}
             {page === "settings" && <SettingsPage onLogout={handleLogout} setPage={setPage} showToast={showToast} currentUser={currentUser} profile={profile} onProfileUpdated={setProfile} theme={theme} setTheme={setTheme} onThemeImage={handleThemeImage} currentCountry={currentCountry} setCurrentCountry={setCurrentCountry} />}
             {page === "adminReports" && <AdminReportsPage setPage={setPage} showToast={showToast} />}
             {page === "blockedUsers" && <BlockedUsersPage currentUser={currentUser} setPage={setPage} showToast={showToast} onOpenProfile={openProfile} />}
