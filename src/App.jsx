@@ -2702,6 +2702,7 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
   const [search, setSearch] = useState("");
   const [results, setResults] = useState([]);
   const [posts, setPosts] = useState([]);
+  const [placeContext, setPlaceContext] = useState(null);
   const [title, setTitle] = useState(forceMode === "quotes" ? "Find inspiration and share your creations" : "Explore Diary");
   const [searching, setSearching] = useState(false);
   const [mode, setMode] = useState(forceMode);
@@ -2724,12 +2725,35 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
   const visibleGems = useMemo(() => getGemsForCountry(currentCountry), [currentCountry]);
   const trending = useMemo(() => getTrendingLocationsForCountry(currentCountry, posts), [currentCountry, posts]);
 
+  const buildPlaceContext = useCallback(async (term, source = "location", seedGem = null) => {
+    const trimmed = (term || "").trim();
+    if (!trimmed) return null;
+    const matchingGems = visibleGems.filter((gem) => {
+      const haystack = `${gem.name} ${gem.search_term || ""} ${gem.description || ""}`.toLowerCase();
+      const needle = trimmed.toLowerCase();
+      return haystack.includes(needle) || needle.includes((gem.search_term || gem.name).toLowerCase());
+    });
+    const gemList = seedGem ? [seedGem, ...matchingGems.filter((gem) => gem.id !== seedGem.id)] : matchingGems;
+    const { data: nearbyProfiles } = await supabase
+      .from("profiles")
+      .select("id, username, full_name, avatar_url, location, website")
+      .ilike("location", `%${trimmed}%`)
+      .limit(8);
+    return {
+      term: trimmed,
+      source,
+      gems: gemList.slice(0, 4),
+      profiles: nearbyProfiles || [],
+    };
+  }, [visibleGems]);
+
   const loadFeed = useCallback(async () => {
     let query = supabase.from("posts").select("*, profiles(username, avatar_url)").order("created_at", { ascending: false }).limit(30);
     if (mode === "quotes") query = query.eq("category", "quote");
     else query = query.neq("category", "quote");
     const { data } = await query;
     setPosts(data || []);
+    setPlaceContext(null);
     setTitle(mode === "quotes" ? "Find inspiration and share your creations" : "Explore Diary");
   }, [mode]);
 
@@ -2744,6 +2768,7 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
     ]);
     setResults(users || []);
     setPosts((matchedPosts || []).filter(p => mode === "quotes" ? p.category === "quote" : p.category !== "quote"));
+    setPlaceContext(null);
     setTitle(`Results for "${term}"`);
     setSearching(false);
   }, [mode, search]);
@@ -2766,6 +2791,7 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
     else query = query.neq("category", "quote");
     const { data } = await query;
     setPosts(data || []);
+    setPlaceContext(await buildPlaceContext(location, "location"));
   };
 
   const loadByVibe = async (label, vibe) => {
@@ -2775,6 +2801,7 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
     if (mode === "quotes") query = query.eq("category", "quote");
     const { data } = await query;
     setPosts(data || []);
+    setPlaceContext(null);
   };
 
   const loadByGem = async (gem) => {
@@ -2786,12 +2813,14 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
     else query = query.neq("category", "quote");
     const { data } = await query;
     setPosts(data || []);
+    setPlaceContext(await buildPlaceContext(place, "gem", gem));
   };
 
   const loadQuoteCollection = async (label, keyword) => {
     setResults([]);
     setMode("quotes");
     setPage?.("quotes");
+    setPlaceContext(null);
     setTitle(label);
     const { data } = await supabase.from("posts")
       .select("*, profiles(username, avatar_url)")
@@ -2831,6 +2860,51 @@ function DiscoverPage2({ showToast, onOpenProfile, onOpenPost, setPage, forceMod
         </div>
         <Btn variant="primary" onClick={handleSearch} loading={searching} style={{ borderRadius: 12, padding: "13px 18px" }}>Go</Btn>
       </div>
+      {placeContext && (
+        <div style={{ background: C.white, border: `1px solid ${C.beige}`, borderRadius: 18, padding: 14, marginBottom: 18, boxShadow: `0 10px 28px ${C.shadow}` }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+            <div>
+              <p style={{ margin: 0, color: C.dark, fontWeight: 800, fontSize: 14 }}>{placeContext.term}</p>
+              <p style={{ margin: "3px 0 0", color: C.brown, fontSize: 12 }}>
+                {placeContext.source === "gem" ? "Hidden-gem trail" : "Place trail"}
+              </p>
+            </div>
+            <button onClick={loadFeed} style={{ border: `1px solid ${C.beige}`, background: C.cream, color: C.dark, borderRadius: 999, padding: "8px 12px", cursor: "pointer", fontWeight: 700 }}>
+              Reset
+            </button>
+          </div>
+          {placeContext.gems?.length ? (
+            <div style={{ marginBottom: placeContext.profiles?.length ? 12 : 0 }}>
+              <p style={{ margin: "0 0 8px", color: C.dark, fontSize: 12, fontWeight: 800 }}>Nearby hidden gems</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {placeContext.gems.map((gem) => (
+                  <button key={gem.id} onClick={() => loadByGem(gem)} style={{ border: `1px solid ${C.beige}`, background: C.beige, color: C.dark, borderRadius: 999, padding: "7px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                    {gem.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {placeContext.profiles?.length ? (
+            <div>
+              <p style={{ margin: "0 0 8px", color: C.dark, fontSize: 12, fontWeight: 800 }}>Diarists here</p>
+              <div style={{ display: "grid", gap: 8 }}>
+                {placeContext.profiles.map((user) => (
+                  <button key={user.id} onClick={() => onOpenProfile?.(user.id)} style={{ display: "flex", alignItems: "center", gap: 10, border: `1px solid ${C.beige}`, background: C.cream, borderRadius: 14, padding: 10, cursor: "pointer", textAlign: "left" }}>
+                    <Avatar src={user.avatar_url} size={40} active />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <p style={{ margin: 0, color: C.dark, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayHandle(user.username)}</p>
+                      <p style={{ margin: "2px 0 0", color: C.brown, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.full_name || "Diary user"}</p>
+                      {user.location ? <p style={{ margin: "2px 0 0", color: C.tan, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.location}</p> : null}
+                    </div>
+                    <span style={{ color: C.tan, fontWeight: 800 }}>{">"}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
       {results.length > 0 && (
         <div style={{ marginBottom: 18 }}>
           {results.map(u => (
