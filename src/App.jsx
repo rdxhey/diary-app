@@ -3149,6 +3149,7 @@ const setHiddenMessageIds = (userId, ids) => {
     localStorage.setItem(getHiddenMessageIdsKey(userId), JSON.stringify([...new Set(ids.filter(Boolean))]));
   } catch {}
 };
+const getChatWallpaperKey = (userId, otherUserId) => `diary-chat-wallpaper:${userId || "guest"}:${otherUserId || "default"}`;
 
 const getRecentMemoryPosts = (posts = [], max = 12) => {
   const now = Date.now();
@@ -3390,7 +3391,7 @@ function ArchiveMemoryViewer({ posts = [], startIndex = 0, onClose, onOpenPost, 
   );
 }
 
-function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showToast, onOpenProfile, onOpenPost }) {
+function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showToast, onOpenProfile, onOpenPost, onOpenLocation, onDeleteStory }) {
   const [index, setIndex] = useState(startIndex);
   const [appreciatedIds, setAppreciatedIds] = useState(new Set());
   const [likeDetails, setLikeDetails] = useState({});
@@ -3561,6 +3562,12 @@ function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showT
 
   const viewers = viewersByStory[story.id] || [];
   const appreciators = likeDetails[story.id] || [];
+  const handleDeleteStory = async () => {
+    if (!story?.id || !isOwner || !onDeleteStory) return;
+    const confirmed = window.confirm("Delete this memory?");
+    if (!confirmed) return;
+    await onDeleteStory(story);
+  };
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.95)", zIndex: 10000, display: "flex", flexDirection: "column" }}>
@@ -3633,6 +3640,16 @@ function StoryViewer({ stories = [], startIndex = 0, onClose, currentUser, showT
           <button onClick={() => onOpenPost?.(story)} style={{ border: "1px solid rgba(255,255,255,.28)", borderRadius: 999, padding: "10px 14px", cursor: "pointer", background: "transparent", color: C.white, fontWeight: 800 }}>
             Open Diary
           </button>
+          {(story.location || story.location_name) ? (
+            <button onClick={() => onOpenLocation?.(story.location || story.location_name)} style={{ border: "1px solid rgba(255,255,255,.28)", borderRadius: 999, padding: "10px 14px", cursor: "pointer", background: "transparent", color: C.white, fontWeight: 800 }}>
+              Open place
+            </button>
+          ) : null}
+          {isOwner && onDeleteStory ? (
+            <button onClick={handleDeleteStory} style={{ border: "1px solid rgba(255,255,255,.28)", borderRadius: 999, padding: "10px 14px", cursor: "pointer", background: "transparent", color: "#ffd7d7", fontWeight: 800 }}>
+              Delete
+            </button>
+          ) : null}
         </div>
         {isOwner ? (
           <div style={{ display: "grid", gap: 8 }}>
@@ -3877,6 +3894,7 @@ function MemoriesPage({ currentUser, showToast, onOpenPost, onOpenProfile, setPa
           showToast={showToast}
           onOpenProfile={onOpenProfile}
           onOpenPost={onOpenPost}
+          onOpenLocation={onOpenLocation}
         />
       )}
       {activeIndex != null && saved[activeIndex] && (
@@ -4005,6 +4023,18 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
     setAvatarFile(new File([blob], "avatar.jpg", { type: "image/jpeg" }));
     setAvatarPreview(url);
     setShowAvatarCropper(false);
+  };
+
+  const handleDeleteStory = async (story) => {
+    if (!currentUser?.id || !story?.id) return;
+    const { error } = await supabase.from("posts").delete().eq("id", story.id).eq("user_id", currentUser.id);
+    if (error) {
+      showToast(error.message || "Could not delete this memory", "error");
+      return;
+    }
+    setPosts((prev) => prev.filter((item) => item.id !== story.id));
+    setStoryIndex(null);
+    showToast("Memory deleted");
   };
 
   const handleSave = async () => {
@@ -4192,6 +4222,8 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
           showToast={showToast}
           onOpenProfile={onOpenProfile}
           onOpenPost={onOpenPost}
+          onOpenLocation={onOpenLocation}
+          onDeleteStory={handleDeleteStory}
         />
       )}
       {archiveIndex != null && archivedStories[archiveIndex] && (
@@ -5364,7 +5396,8 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
   const [filter, setFilter] = useState("all");
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [reportReason, setReportReason] = useState("");
-  const [chatWallpaper, setChatWallpaper] = useState(() => localStorage.getItem("diary-chat-wallpaper") || "");
+  const [chatWallpaper, setChatWallpaper] = useState("");
+  const [showThreadMenu, setShowThreadMenu] = useState(false);
   const [activeChannel, setActiveChannel] = useState(null);
   const [hiddenMessageIdsState, setHiddenMessageIdsState] = useState(() => getHiddenMessageIds(currentUser?.id));
   const wallpaperRef = useRef(null);
@@ -5426,9 +5459,17 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
   }, [currentUser, loadConversations]);
 
   useEffect(() => {
-    if (chatWallpaper) localStorage.setItem("diary-chat-wallpaper", chatWallpaper);
-    else localStorage.removeItem("diary-chat-wallpaper");
-  }, [chatWallpaper]);
+    setShowThreadMenu(false);
+    if (!currentUser?.id) return;
+    setChatWallpaper(localStorage.getItem(getChatWallpaperKey(currentUser.id, active?.id)) || "");
+  }, [currentUser?.id, active?.id]);
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    const key = getChatWallpaperKey(currentUser.id, active?.id);
+    if (chatWallpaper) localStorage.setItem(key, chatWallpaper);
+    else localStorage.removeItem(key);
+  }, [chatWallpaper, currentUser?.id, active?.id]);
 
   useEffect(() => {
     if (!currentUser || search.trim().length < 2) { setPeople([]); return; }
@@ -5501,28 +5542,74 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
 
   const unsendMessage = async () => {
     if (!selectedMessage || selectedMessage.sender_id !== currentUser?.id) return;
-    const nextHiddenIds = [...new Set([...hiddenMessageIdsState, selectedMessage.id])];
+    const targetMessage = selectedMessage;
+    setSelectedMessage(null);
+    setMessages(prev => prev.filter((m) => m.id !== targetMessage.id));
+    const nextHiddenIds = [...new Set([...hiddenMessageIdsState, targetMessage.id])];
     setHiddenMessageIds(currentUser.id, nextHiddenIds);
     setHiddenMessageIdsState(nextHiddenIds);
     let succeeded = false;
-    const { error: updateError } = await supabase.from("messages").update({ content: UNSENT_MESSAGE_TOKEN }).eq("id", selectedMessage.id).eq("sender_id", currentUser.id);
+    const { error: updateError } = await supabase.from("messages").update({ content: UNSENT_MESSAGE_TOKEN }).eq("id", targetMessage.id).eq("sender_id", currentUser.id);
     if (!updateError) {
       succeeded = true;
-      await supabase.from("messages").delete().eq("id", selectedMessage.id).eq("sender_id", currentUser.id);
+      await supabase.from("messages").delete().eq("id", targetMessage.id).eq("sender_id", currentUser.id);
     } else {
-      const { error: deleteError } = await supabase.from("messages").delete().eq("id", selectedMessage.id).eq("sender_id", currentUser.id);
+      const { error: deleteError } = await supabase.from("messages").delete().eq("id", targetMessage.id).eq("sender_id", currentUser.id);
       if (!deleteError) succeeded = true;
       else showToast?.(deleteError.message || updateError.message || "Could not unsend message", "error");
     }
     if (succeeded) {
-      setMessages(prev => prev.filter(m => m.id !== selectedMessage.id));
       if (active) {
         await loadThreadMessages(active);
       }
       loadConversations();
       showToast?.("Message unsent for everyone");
+    } else if (active) {
+      await loadThreadMessages(active);
     }
-    setSelectedMessage(null);
+  };
+
+  const clearThreadWallpaper = () => {
+    setChatWallpaper("");
+    setShowThreadMenu(false);
+    showToast?.("Thread wallpaper removed");
+  };
+
+  const reportActiveUser = async () => {
+    if (!currentUser?.id || !active?.id) return;
+    let { error } = await supabase.from("reports").insert({
+      reporter_id: currentUser.id,
+      reported_user_id: active.id,
+      reason: "Message account report",
+      details: `Reported from DM thread with ${displayHandle(active.username, "user")}`,
+      status: "pending",
+    });
+    if (error) {
+      const fallback = await supabase.from("reports").insert({
+        reporter_id: currentUser.id,
+        reported_user_id: active.id,
+        reason: "Message account report",
+      });
+      error = fallback.error || null;
+    }
+    if (error) showToast?.(error.message || "Could not report this account", "error");
+    else showToast?.("Account reported to Diary authority");
+    setShowThreadMenu(false);
+  };
+
+  const blockActiveUser = async () => {
+    if (!currentUser?.id || !active?.id) return;
+    const confirmed = window.confirm(`Block ${displayHandle(active.username, "this user")}?`);
+    if (!confirmed) return;
+    const { error } = await supabase.from("blocks").insert({ blocker_id: currentUser.id, blocked_id: active.id });
+    if (error) {
+      showToast?.(error.message || "Could not block this account", "error");
+      return;
+    }
+    setShowThreadMenu(false);
+    closeConvo();
+    await loadConversations();
+    showToast?.("Account blocked");
   };
 
   const reportMessage = async (reason) => {
@@ -5577,6 +5664,9 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <button onClick={() => wallpaperRef.current?.click()} style={{ border: "none", background: "none", cursor: "pointer", color: C.brown, fontWeight: 800, fontSize: 12 }}>
                   Wallpaper
+                </button>
+                <button onClick={() => setShowThreadMenu(true)} style={{ border: "none", background: "none", cursor: "pointer", color: C.brown, fontWeight: 900, fontSize: 18, lineHeight: 1 }}>
+                  ⋯
                 </button>
                 <button onClick={() => onOpenProfile?.(active.id)} style={{ border: "none", background: "none", padding: 0, cursor: "pointer" }}><Avatar src={active.avatar_url} size={38} active /></button>
               </div>
@@ -5677,6 +5767,19 @@ function DMsPage2({ currentUser, setPage, showToast, initialUser, onOpenProfile 
             ))}
           </div>
         </>
+      )}
+      {showThreadMenu && active && (
+        <div onClick={() => setShowThreadMenu(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", zIndex: 9998, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 480, background: C.white, borderRadius: "24px 24px 0 0", padding: "12px 16px 24px", boxShadow: `0 -14px 40px ${C.shadow}` }}>
+            <div style={{ width: 42, height: 4, borderRadius: 999, background: C.tan, margin: "0 auto 12px", opacity: 0.7 }} />
+            <h3 style={{ margin: "0 0 10px", fontFamily: "'Playfair Display',Georgia,serif", color: C.dark }}>Thread options</h3>
+            <button onClick={() => { setShowThreadMenu(false); onOpenProfile?.(active.id); }} style={{ width: "100%", textAlign: "left", border: "none", background: "none", padding: "13px 2px", color: C.dark, fontWeight: 800, cursor: "pointer" }}>Open profile</button>
+            <button onClick={() => { setShowThreadMenu(false); wallpaperRef.current?.click(); }} style={{ width: "100%", textAlign: "left", border: "none", background: "none", padding: "13px 2px", color: C.dark, fontWeight: 800, cursor: "pointer" }}>Change wallpaper</button>
+            {chatWallpaper ? <button onClick={clearThreadWallpaper} style={{ width: "100%", textAlign: "left", border: "none", background: "none", padding: "13px 2px", color: C.dark, fontWeight: 800, cursor: "pointer" }}>Remove wallpaper</button> : null}
+            <button onClick={reportActiveUser} style={{ width: "100%", textAlign: "left", border: "none", background: "none", padding: "13px 2px", color: C.dark, fontWeight: 800, cursor: "pointer" }}>Report account</button>
+            <button onClick={blockActiveUser} style={{ width: "100%", textAlign: "left", border: "none", background: "none", padding: "13px 2px", color: C.red, fontWeight: 800, cursor: "pointer" }}>Block account</button>
+          </div>
+        </div>
       )}
       {selectedMessage && (
         <div onClick={() => setSelectedMessage(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", zIndex: 9999, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
