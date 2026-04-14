@@ -3133,6 +3133,56 @@ function FollowListSheetEnhanced({ open, title, users, onClose, onOpenProfile })
   );
 }
 
+function FollowListSheetEnhanced2({ open, title, users, onClose, onOpenProfile, currentUser, onToggleFollow }) {
+  if (!open) return null;
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 9999, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 480, background: C.white, borderRadius: "24px 24px 0 0", padding: "12px 16px 24px", boxShadow: `0 -14px 40px ${C.shadow}`, maxHeight: "72vh", overflowY: "auto" }}>
+        <div style={{ width: 42, height: 4, borderRadius: 999, background: C.tan, margin: "0 auto 12px", opacity: 0.7 }} />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <h3 style={{ margin: 0, fontFamily: "'Playfair Display',Georgia,serif", color: C.dark }}>{title}</h3>
+          <button onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 20, color: C.brown }}>X</button>
+        </div>
+        {users.length === 0 ? (
+          <p style={{ color: C.brown, fontStyle: "italic", textAlign: "center", padding: "18px 0" }}>No people here yet</p>
+        ) : users.map((user) => {
+          const canFollow = currentUser && user.id !== currentUser.id;
+          return (
+            <div key={user.id} style={{ display: "flex", alignItems: "stretch", gap: 10, borderBottom: `1px solid ${C.beige}`, padding: "12px 0" }}>
+              <button
+                onClick={() => { onClose(); onOpenProfile?.(user.id); }}
+                style={{ flex: 1, display: "flex", alignItems: "center", gap: 12, border: "none", background: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
+              >
+                <Avatar src={user.avatar_url} size={46} active />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ margin: 0, color: C.dark, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayHandle(user.username)}</p>
+                  <p style={{ margin: "2px 0 0", color: C.brown, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.full_name || "Diary user"}</p>
+                  {getProfileLocationLabel(user) ? (
+                    <p style={{ margin: "3px 0 0", color: C.tan, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {getProfileLocationLabel(user)}
+                    </p>
+                  ) : null}
+                  <p style={{ margin: "4px 0 0", color: C.tan, fontSize: 11 }}>
+                    {user.posts_count || 0} posts | {user.followers_count || 0} followers | {user.following_count || 0} following
+                  </p>
+                </div>
+              </button>
+              {canFollow ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onToggleFollow?.(user); }}
+                  style={{ border: `1px solid ${C.beige}`, background: user.is_following ? C.beige : C.dark, color: user.is_following ? C.dark : C.white, borderRadius: 14, padding: "8px 12px", cursor: "pointer", fontWeight: 800, minWidth: 86 }}
+                >
+                  {user.is_following ? "Following" : "Follow"}
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 const STORY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const UNSENT_MESSAGE_TOKEN = "__diary_unsent__";
 const isVisibleMessage = (message) => message?.content !== UNSENT_MESSAGE_TOKEN;
@@ -3810,13 +3860,14 @@ function ArcShelf({ posts = [], title = "Personal Lore", onOpenPost, showHeader 
 // ============================================================
 // MEMORIES PAGE — REAL BOOKMARKS
 // ============================================================
-function MemoriesPage({ currentUser, showToast, onOpenPost, onOpenProfile, setPage }) {
+function MemoriesPage({ currentUser, showToast, onOpenPost, onOpenProfile, onOpenLocation, setPage }) {
   const [saved, setSaved] = useState([]);
   const [recentStories, setRecentStories] = useState([]);
   const [archivedStories, setArchivedStories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(null);
   const [storyIndex, setStoryIndex] = useState(null);
+  const [archiveIndex, setArchiveIndex] = useState(null);
   const seenIds = getSeenStoryIds(currentUser?.id);
 
   useEffect(() => {
@@ -3881,7 +3932,7 @@ function MemoriesPage({ currentUser, showToast, onOpenPost, onOpenProfile, setPa
         <MemoryArchiveGrid
           title="Your Memory Archive"
           posts={archivedStories}
-          onOpenPost={onOpenPost}
+          onOpenPost={(post) => setArchiveIndex(archivedStories.findIndex((item) => item.id === post.id))}
           emptyText="No archived memories yet"
         />
       )}
@@ -3893,6 +3944,15 @@ function MemoriesPage({ currentUser, showToast, onOpenPost, onOpenProfile, setPa
           currentUser={currentUser}
           showToast={showToast}
           onOpenProfile={onOpenProfile}
+          onOpenPost={onOpenPost}
+          onOpenLocation={onOpenLocation}
+        />
+      )}
+      {archiveIndex != null && archivedStories[archiveIndex] && (
+        <ArchiveMemoryViewer
+          posts={archivedStories}
+          startIndex={archiveIndex}
+          onClose={() => setArchiveIndex(null)}
           onOpenPost={onOpenPost}
           onOpenLocation={onOpenLocation}
         />
@@ -4009,7 +4069,27 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
       return;
     }
     const users = await enrichProfilesForSheet(ids);
-    setFollowSheet({ open: true, title: kind === "followers" ? "Followers" : "Following", users: users || [] });
+    let followSet = new Set();
+    const { data: followRows } = await supabase.from("follows")
+      .select("following_id")
+      .eq("follower_id", currentUser.id)
+      .in("following_id", ids);
+    followSet = new Set((followRows || []).map((row) => row.following_id));
+    const enriched = (users || []).map((user) => ({ ...user, is_following: followSet.has(user.id) }));
+    setFollowSheet({ open: true, title: kind === "followers" ? "Followers" : "Following", users: enriched });
+  };
+
+  const toggleFollowInSheet = async (user) => {
+    if (!currentUser || !user?.id || user.id === currentUser.id) return;
+    if (user.is_following) {
+      await supabase.from("follows").delete().match({ follower_id: currentUser.id, following_id: user.id });
+    } else {
+      await supabase.from("follows").insert({ follower_id: currentUser.id, following_id: user.id });
+    }
+    setFollowSheet((prev) => ({
+      ...prev,
+      users: prev.users.map((item) => item.id === user.id ? { ...item, is_following: !item.is_following } : item),
+    }));
   };
 
   const handleAvatarPick = (e) => {
@@ -4235,7 +4315,15 @@ function ProfilePage({ currentUser, profile, setPage, showToast, onLogout, onPro
           onOpenLocation={onOpenLocation}
         />
       )}
-      <FollowListSheetEnhanced open={followSheet.open} title={followSheet.title} users={followSheet.users} onClose={() => setFollowSheet({ open: false, title: "", users: [] })} onOpenProfile={onOpenProfile} />
+      <FollowListSheetEnhanced2
+        open={followSheet.open}
+        title={followSheet.title}
+        users={followSheet.users}
+        onClose={() => setFollowSheet({ open: false, title: "", users: [] })}
+        onOpenProfile={onOpenProfile}
+        currentUser={currentUser}
+        onToggleFollow={toggleFollowInSheet}
+      />
     </div>
   );
 }
@@ -4308,7 +4396,29 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
       return;
     }
     const users = await enrichProfilesForSheet(ids);
-    setFollowSheet({ open: true, title: kind === "followers" ? "Followers" : "Following", users: users || [] });
+    let followSet = new Set();
+    if (currentUser?.id) {
+      const { data: followRows } = await supabase.from("follows")
+        .select("following_id")
+        .eq("follower_id", currentUser.id)
+        .in("following_id", ids);
+      followSet = new Set((followRows || []).map((row) => row.following_id));
+    }
+    const enriched = (users || []).map((user) => ({ ...user, is_following: followSet.has(user.id) }));
+    setFollowSheet({ open: true, title: kind === "followers" ? "Followers" : "Following", users: enriched });
+  };
+
+  const toggleFollowInSheet = async (user) => {
+    if (!currentUser || !user?.id || user.id === currentUser.id) return;
+    if (user.is_following) {
+      await supabase.from("follows").delete().match({ follower_id: currentUser.id, following_id: user.id });
+    } else {
+      await supabase.from("follows").insert({ follower_id: currentUser.id, following_id: user.id });
+    }
+    setFollowSheet((prev) => ({
+      ...prev,
+      users: prev.users.map((item) => item.id === user.id ? { ...item, is_following: !item.is_following } : item),
+    }));
   };
 
   const handleFollow = async () => {
@@ -4518,7 +4628,15 @@ function PublicProfilePage({ profileId, currentUser, setPage, showToast, onMessa
           </div>
         </div>
       )}
-      <FollowListSheetEnhanced open={followSheet.open} title={followSheet.title} users={followSheet.users} onClose={() => setFollowSheet({ open: false, title: "", users: [] })} onOpenProfile={onOpenProfile} />
+      <FollowListSheetEnhanced2
+        open={followSheet.open}
+        title={followSheet.title}
+        users={followSheet.users}
+        onClose={() => setFollowSheet({ open: false, title: "", users: [] })}
+        onOpenProfile={onOpenProfile}
+        currentUser={currentUser}
+        onToggleFollow={toggleFollowInSheet}
+      />
     </div>
   );
 }
